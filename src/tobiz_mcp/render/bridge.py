@@ -82,3 +82,14 @@ class RenderBridge:
                 raw={"failed": failed[:5]},
             )
         return {str(k): str(v) for k, v in result.get("html", {}).items()}
+
+    async def audit(self, vendor_dir: Path,
+                    type_ids: list[str] | None = None,
+                    samples_by_type: dict[str, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+        """Render defaults and checkbox/select variants without writing to TOBIZ."""
+        return await self._run({
+            "op": "audit",
+            "vendor_dir": str(vendor_dir),
+            "type_ids": [str(value) for value in (type_ids or [])],
+            "samples_by_type": samples_by_type or {},
+        })

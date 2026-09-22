@@ -31,7 +31,7 @@ READ_TOOLS = {
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
-    "tobiz_page_info",
+    "tobiz_page_info", "tobiz_audit_catalog",
 }
 
 
@@ -259,6 +259,19 @@ def register(mcp: Any, service: Service) -> list[str]:
         types = await service.block_types(project.project_id)
         return {"project_id": project.project_id, "files": index.get("files", {}),
                 "types": len(types)}
+
+    @tool("tobiz_audit_catalog",
+          "Без записи на сайт прогнать рендер всех типов блоков либо выбранных type_ids: "
+          "дефолт, оба состояния checkbox и все варианты select. Возвращает несовместимые "
+          "шаблоны и функции рантайма.")
+    async def tobiz_audit_catalog(project_id: Id | None = None,
+                                  type_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        result = await service.audit_catalog(project.project_id, list(type_ids or []))
+        failures = result.get("failures") or []
+        result["failures"] = failures[:200]
+        result["failures_truncated"] = max(0, len(failures) - 200)
+        return result
 
     # --- запись ---
 

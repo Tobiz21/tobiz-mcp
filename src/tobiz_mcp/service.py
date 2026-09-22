@@ -152,6 +152,88 @@ class Service:
     async def block_types(self, project_id: str) -> dict[str, BlockType]:
         return await self.catalog.types(project_id)
 
+    async def audit_catalog(self, project_id: str,
+                            type_ids: list[str] | None = None) -> dict[str, Any]:
+        await self.catalog.ensure_assets(project_id)
+        vendor_dir = self.catalog.project_dir(project_id) / "bundles"
+        selected = list(type_ids or (await self.block_types(project_id)).keys())
+        samples_by_type: dict[str, list[dict[str, Any]]] = {}
+        _, pages = await self.pages(project_id, refresh=True)
+        for page in pages:
+            draft = await self.draft(project_id, page.page_id, refresh=True)
+            for block_id in draft.order:
+                block = draft.blocks[block_id]
+                if block.deleted or block.type_id not in selected:
+                    continue
+                samples = samples_by_type.setdefault(block.type_id, [])
+                sample_limit = 100 if block.type_id == "1600" else 5
+                if len(samples) < sample_limit:
+                    samples.append(block.values)
+        block_types = await self.block_types(project_id)
+        for type_id in selected:
+            if type_id in samples_by_type:
+                continue
+            block_type = block_types.get(type_id)
+            if block_type is None:
+                continue
+            defaults = await self.catalog.default_values(project_id, block_type)
+            if defaults:
+                samples_by_type[type_id] = [defaults]
+        combined: dict[str, Any] = {
+            "ok": True, "types_checked": 0, "cases_checked": 0,
+            "passed": 0, "failed": 0, "failures": [], "by_type": {},
+        }
+        # jsdom is intentionally process-scoped; batches keep a full-catalog audit below the
+        # Node heap limit even for thousands of checkbox/select combinations.
+        for offset in range(0, len(selected), 12):
+            batch = selected[offset:offset + 12]
+            result = await self.bridge.audit(
+                vendor_dir, batch,
+                {type_id: samples_by_type[type_id] for type_id in batch
+                 if type_id in samples_by_type},
+            )
+            combined["types_checked"] += int(result.get("types_checked") or 0)
+            combined["cases_checked"] += int(result.get("cases_checked") or 0)
+            combined["passed"] += int(result.get("passed") or 0)
+            combined["failed"] += int(result.get("failed") or 0)
+            combined["failures"].extend(result.get("failures") or [])
+            combined["by_type"].update(result.get("by_type") or {})
+        combined["ok"] = combined["failed"] == 0
+        combined["types_with_server_samples"] = len(samples_by_type)
+        flex_samples = list(samples_by_type.get("1600", []))
+        flex_type = block_types.get("1600")
+        if flex_type and flex_type.values:
+            flex_samples.insert(0, flex_type.values)
+        flex_element_types: dict[str, int] = {}
+        flex_style_keys: dict[str, int] = {}
+        flex_elements = 0
+        for sample in flex_samples:
+            flexblocks = sample.get("flexblocks") or []
+            if isinstance(flexblocks, dict):
+                flexblocks = list(flexblocks.values())
+            if not isinstance(flexblocks, list):
+                continue
+            for element in flexblocks:
+                if not isinstance(element, dict):
+                    continue
+                flex_elements += 1
+                element_type = str(element.get("type") or element.get("type_id") or "unknown")
+                flex_element_types[element_type] = flex_element_types.get(element_type, 0) + 1
+                for key in element:
+                    if key.startswith(("style", "desktop", "tablet", "mobile")):
+                        flex_style_keys[key] = flex_style_keys.get(key, 0) + 1
+        combined["flex"] = {
+            "samples": len(flex_samples),
+            "elements": flex_elements,
+            "element_types": flex_element_types,
+            "supported_element_types": [
+                "text", "html", "mdicon", "figure", "hint",
+                "image", "video", "form", "btn",
+            ],
+            "responsive_style_keys": flex_style_keys,
+        }
+        return combined
+
     async def type_or_raise(self, project_id: str, type_id: str) -> BlockType:
         types = await self.block_types(project_id)
         block_type = types.get(str(type_id))

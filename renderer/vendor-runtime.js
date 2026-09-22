@@ -215,6 +215,83 @@ function deepSet(target, pathValue, value) {
   return target;
 }
 
+function parseVKVideoLink(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/(?:video|clip)(-?\d+)[_\/](\d+)/i)
+    || value.match(/[?&]oid=(-?\d+).*?[?&]id=(\d+)/i);
+  if (!match) return {};
+  return { owner_id: match[1], video_id: match[2] };
+}
+
+function parseYouTubeLink(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/))([A-Za-z0-9_-]{6,})/i);
+  return match ? match[1] : '';
+}
+
+function parseRutubeLink(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/rutube\.ru\/(?:video|play\/embed)\/([A-Za-z0-9_-]+)/i);
+  return match ? match[1] : '';
+}
+
+function parsePLVideoLink(url) {
+  const value = String(url || '').trim();
+  const match = value.match(/plvideo\.ru\/(?:watch\?v=|video\/|embed\/)([A-Za-z0-9_-]+)/i);
+  return match ? match[1] : '';
+}
+
+function renderVideoFrame(url) {
+  const value = String(url || '').trim();
+  let src = '';
+  let videoId = '';
+  if (/(?:vk\.(?:com|ru)|vkvideo\.ru)/i.test(value)) {
+    const parsed = parseVKVideoLink(value);
+    if (parsed.owner_id !== undefined) {
+      videoId = parsed.video_id;
+      src = `https://vkvideo.ru/video_ext.php?oid=${parsed.owner_id}&id=${parsed.video_id}`;
+    }
+  } else if (/rutube\.ru/i.test(value)) {
+    videoId = parseRutubeLink(value);
+    if (videoId) src = `https://rutube.ru/play/embed/${videoId}`;
+  } else if (/plvideo\.ru/i.test(value)) {
+    videoId = parsePLVideoLink(value);
+    if (videoId) src = `https://plvideo.ru/embed/${videoId}`;
+  } else if (/(?:youtube\.com|youtu\.be)/i.test(value)) {
+    videoId = parseYouTubeLink(value);
+    if (videoId) src = `https://www.youtube.com/embed/${videoId}`;
+  } else if (/vimeo\.com/i.test(value)) {
+    const match = value.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
+    if (match) {
+      videoId = match[1];
+      src = `https://player.vimeo.com/video/${videoId}`;
+    }
+  }
+  if (!src) return '';
+  return `<iframe src="${escapeHtml(src)}" frameborder="0" allowfullscreen loading="lazy" data-video-id="${escapeHtml(videoId)}"></iframe>`;
+}
+
+function renderSocialIcons(values = {}) {
+  if (!values.show_icons) return '';
+  const networks = [
+    ['sn-vk', 'show_vk', 'link_vk'],
+    ['sn-max', 'show_max', 'link_max'],
+    ['sn-whatsapp', 'show_gplus', 'link_whatsup'],
+    ['sn-youtube', 'show_youtube', 'link_youtube'],
+    ['sn-vimeo', 'show_vimeo', 'link_vimeo'],
+    ['sn-zen', 'show_zen', 'link_zen'],
+    ['sn-rutube', 'show_rutube', 'link_rutube'],
+    ['sn-ok', 'show_o', 'link_o'],
+    ['sn-viber', 'show_mail', 'link_viber'],
+    ['sn-telegram', 'show_tg', 'link_tg'],
+  ];
+  const links = networks
+    .filter(([, show]) => values[show])
+    .map(([className, , href]) => `<a class="${className}" href="${escapeHtml(values[href] || '#')}" target="_blank" rel="noopener"></a>`)
+    .join('');
+  return `<div class="social_icons social_icons_ng ${escapeHtml(values.icons_figure || '')}">${links}</div>`;
+}
+
 function installTobizStubs(sandbox) {
   Object.assign(sandbox.window.tobiz, {
     wrapToBootstrapCard: (_title, body) => body || '',
@@ -227,10 +304,10 @@ function installTobizStubs(sandbox) {
     deepSet,
     getElementInfo: () => ({ top: 0, left: 0, width: 0, height: 0 }),
     sanitizeHtml: (html) => html || '',
-    parseYouTubeLinkNG: (url) => ({ id: '', service: 'youtube', url }),
-    ParseVKVideoLink: (url) => ({ oid: '', id: '', hash: '', url }),
-    getRutubeVideoId: () => '',
-    parsePLVideoLink: (url) => ({ id: '', url }),
+    parseYouTubeLinkNG: parseYouTubeLink,
+    ParseVKVideoLink: parseVKVideoLink,
+    getRutubeVideoId: parseRutubeLink,
+    parsePLVideoLink: parsePLVideoLink,
   });
   sandbox.WindowManager = { open: () => {}, close: () => {} };
   sandbox.anime = () => ({ play: () => {}, pause: () => {} });
@@ -277,6 +354,10 @@ function createRuntime(vendorDir, options = {}) {
   const blocksSrc = read('blocks2.js');
   const mixin = findMixinObject(editorSrc);
   vm.runInContext(`_;_.mixin(${mixin});`, sandbox, { filename: 'vendor-mixin.js' });
+  // getVideoFrame uses a browser jQuery element. Return the same public iframe HTML directly.
+  underscore.getVideoFrame = renderVideoFrame;
+  // The vendor helper builds this fragment through jQuery; produce the public markup directly.
+  underscore.renderSocialIcons = renderSocialIcons;
 
   const bundleSources = BUNDLES
     .map((name) => path.join(vendorDir, name))
@@ -341,7 +422,10 @@ function createRuntime(vendorDir, options = {}) {
       error.code = 'TEMPLATE_UNAVAILABLE';
       throw error;
     }
-    const merged = Object.assign({}, block.values, values || {});
+    const merged = Object.assign({
+      arr1: [], form1: [], form2: [], form_html: '', form_html1: '',
+      icons_figure: '', icons_color: '', menu_bg: '',
+    }, block.values, values || {});
     const body = underscore.template(block.template)(merged);
     const dom = new JSDOM(`<body>${body}</body>`);
     const doc = dom.window.document;
@@ -360,11 +444,31 @@ function createRuntime(vendorDir, options = {}) {
       if (css) extraHtml = `<style id="s_${blockId}">${css}</style>`;
     }
     let html = root.outerHTML + extraHtml;
+    dom.window.close();
     for (const [from, to] of REPLACEMENTS) html = html.replaceAll(from, to);
+    const videoEnabled = Object.prototype.hasOwnProperty.call(merged, 'mode')
+      ? merged.mode !== 'image'
+      : Object.prototype.hasOwnProperty.call(merged, 'use_video')
+        ? merged.use_video === true || Number(merged.use_video) === 1
+        : true;
+    if (block.template.includes('getVideoFrame') && videoEnabled) {
+      const videoUrls = Array.isArray(merged.arr1)
+        ? merged.arr1.map((item) => item && item.video).filter(Boolean)
+        : [];
+      if (videoUrls.length && !html.includes('<iframe')) {
+        const error = new Error(`видео-ссылки не преобразованы в iframe (${videoUrls.length})`);
+        error.code = 'MEDIA_RENDER_EMPTY';
+        throw error;
+      }
+    }
     return html;
   }
 
   return { underscore, blocks, byType, render, appMethods: [...appMethods.keys()] };
 }
 
-module.exports = { createRuntime, findMixinObject, extractAppMethods, REPLACEMENTS };
+module.exports = {
+  createRuntime, findMixinObject, extractAppMethods, REPLACEMENTS,
+  parseVKVideoLink, parseYouTubeLink, parseRutubeLink, parsePLVideoLink, renderVideoFrame,
+  renderSocialIcons,
+};

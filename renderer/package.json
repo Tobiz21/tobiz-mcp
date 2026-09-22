@@ -4,6 +4,9 @@
   "private": true,
   "description": "Рендер блоков конструктора TOBIZ шаблонами и хелперами вендора",
   "main": "bridge.js",
+  "scripts": {
+    "test": "node --test vendor-runtime.test.js"
+  },
   "dependencies": {
     "jsdom": "29.1.1"
   }
