@@ -124,14 +124,118 @@ const REPLACEMENTS = [
 ];
 
 // --- 4. заглушки DOM/jQuery: нужны только чтобы код вендора инициализировался ---
-const stubNode = new Proxy({}, { get: () => () => stubNode });
+function makeStubNode() {
+  const node = {};
+  const chain = () => node;
+  Object.assign(node, {
+    length: 0,
+    ready(callback) { if (typeof callback === 'function') callback(); return node; },
+    on: chain,
+    off: chain,
+    one: chain,
+    trigger: chain,
+    find: chain,
+    parent: chain,
+    parents: chain,
+    closest: chain,
+    children: chain,
+    siblings: chain,
+    filter: chain,
+    eq: chain,
+    first: chain,
+    last: chain,
+    add: chain,
+    addClass: chain,
+    removeClass: chain,
+    toggleClass: chain,
+    removeAttr: chain,
+    append: chain,
+    prepend: chain,
+    after: chain,
+    before: chain,
+    remove: chain,
+    replaceWith: chain,
+    show: chain,
+    hide: chain,
+    toggle: chain,
+    each: chain,
+    map() { return { get: () => [] }; },
+    html(value) { return value === undefined ? '' : node; },
+    text(value) { return value === undefined ? '' : node; },
+    val(value) { return value === undefined ? '' : node; },
+    data() { return undefined; },
+    css(value) { return value === undefined ? '' : node; },
+    attr(value) { return value === undefined ? '' : node; },
+    prop(name) { return name === 'outerHTML' ? '' : undefined; },
+    is() { return false; },
+    hasClass() { return false; },
+    width() { return 0; },
+    height() { return 0; },
+    outerWidth() { return 0; },
+    outerHeight() { return 0; },
+    offset() { return { top: 0, left: 0 }; },
+    position() { return { top: 0, left: 0 }; },
+  });
+  return node;
+}
+
+const stubNode = makeStubNode();
 const $stub = () => stubNode;
-$stub.ajax = () => $stub;
+$stub.ajax = (options) => {
+  if (options && typeof options.success === 'function') options.success({});
+  return stubNode;
+};
 $stub.each = (collection, callback) => {
-  if (Array.isArray(collection)) collection.forEach((value, index) => callback(value, index));
-  return $stub;
+  if (Array.isArray(collection)) collection.forEach((value, index) => callback(index, value));
+  else if (collection && typeof collection === 'object') {
+    Object.keys(collection).forEach((key) => callback(key, collection[key]));
+  }
+  return stubNode;
 };
 $stub.parseHTML = (html) => [new JSDOM(`<body>${html}</body>`).window.document.body.firstElementChild];
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function deepSet(target, pathValue, value) {
+  const parts = Array.isArray(pathValue) ? pathValue : String(pathValue || '').split('.');
+  let cursor = target;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!cursor[key] || typeof cursor[key] !== 'object') cursor[key] = {};
+    cursor = cursor[key];
+  }
+  if (parts.length) cursor[parts[parts.length - 1]] = value;
+  return target;
+}
+
+function installTobizStubs(sandbox) {
+  Object.assign(sandbox.window.tobiz, {
+    wrapToBootstrapCard: (_title, body) => body || '',
+    getSectionId: () => '',
+    getSelectedAttr: (value, current) => String(value) === String(current) ? 'selected' : '',
+    getCheckedAttr: (value, current) => String(value) === String(current) ? 'checked' : '',
+    syncColorInputs: () => {},
+    isValidValue: (v) => v !== null && v !== undefined && v !== '' && v !== 0,
+    escapeHtml,
+    deepSet,
+    getElementInfo: () => ({ top: 0, left: 0, width: 0, height: 0 }),
+    sanitizeHtml: (html) => html || '',
+    parseYouTubeLinkNG: (url) => ({ id: '', service: 'youtube', url }),
+    ParseVKVideoLink: (url) => ({ oid: '', id: '', hash: '', url }),
+    getRutubeVideoId: () => '',
+    parsePLVideoLink: (url) => ({ id: '', url }),
+  });
+  sandbox.WindowManager = { open: () => {}, close: () => {} };
+  sandbox.anime = () => ({ play: () => {}, pause: () => {} });
+  sandbox.CodeMirror = { fromTextArea: () => ({ getValue: () => '', setValue: () => {}, on: () => {} }) };
+}
 
 function createRuntime(vendorDir, options = {}) {
   const quiet = options.quiet !== false;
@@ -158,8 +262,11 @@ function createRuntime(vendorDir, options = {}) {
   sandbox.tobiz = sandbox.window.tobiz;
   sandbox.$ = $stub;
   sandbox.jQuery = $stub;
+  installTobizStubs(sandbox);
   sandbox.A = sandbox.window.tobiz;                       // A = window.tobiz в редакторе
   sandbox.I = (v) => v !== null && v !== undefined && v !== '' && v !== 0; // App.isValidValue
+  sandbox.O = sandbox.window.tobiz;                       // O = window.tobiz в editor.min.js
+  sandbox.R = sandbox.I;                                  // R = window.tobiz.isValidValue
   vm.createContext(sandbox);
 
   vm.runInContext(read('underscore-min.js'), sandbox, { filename: 'underscore-min.js' });
@@ -188,10 +295,44 @@ function createRuntime(vendorDir, options = {}) {
     }
   }
   sandbox.A = sandbox.window.tobiz;
+  sandbox.O = sandbox.window.tobiz;
+  sandbox.R = sandbox.window.tobiz.isValidValue || sandbox.I;
 
   vm.runInContext(blocksSrc, sandbox, { filename: 'blocks2.js' });
+  const flexToolsPath = path.join(vendorDir, 'flex_tools.min.js');
+  if (fs.existsSync(flexToolsPath)) {
+    try {
+      vm.runInContext(fs.readFileSync(flexToolsPath, 'utf8'), sandbox, { filename: 'flex_tools.min.js' });
+    } catch (e) {
+      if (!quiet) process.stderr.write(`[vendor] FlexibleTools: ${e.message}\n`);
+    }
+  }
   const blocks = sandbox.tobiz.blocks || [];
   const byType = new Map(blocks.map((b) => [Number(b.type_id), b]));
+
+  function renderFlexBlock(root, merged, blockId) {
+    const tools = sandbox.FlexibleTools || sandbox.window.FlexibleTools;
+    if (Number(root.getAttribute('data-id')) !== Number(blockId)) root.setAttribute('data-id', String(blockId));
+    if (!tools || typeof tools.renderFlexblocks !== 'function') return '';
+
+    const userBlock = { id: String(blockId), type_id: '1600', data: merged };
+    sandbox.window.tobiz.userBlocks = [userBlock];
+    sandbox.tobiz.userBlocks = sandbox.window.tobiz.userBlocks;
+
+    const flexHtml = tools.renderFlexblocks(String(blockId), merged) || '';
+    const inner = root.querySelector('.section_inner');
+    if (inner && flexHtml) {
+      inner.insertAdjacentHTML('afterbegin', flexHtml);
+      inner.querySelectorAll('.flexblock_tools').forEach((node) => node.remove());
+      inner.querySelectorAll('.flexblock_content').forEach((node) => {
+        node.removeAttribute('data-editor');
+        node.removeAttribute('data-editor-type');
+      });
+    }
+
+    if (typeof tools.renderStyles !== 'function') return '';
+    return tools.renderStyles(String(blockId), userBlock) || '';
+  }
 
   function render(typeId, values, blockId) {
     const block = byType.get(Number(typeId));
@@ -213,7 +354,12 @@ function createRuntime(vendorDir, options = {}) {
     root.prepend(span);
     root.setAttribute('data-id', String(blockId));
     root.setAttribute('id', `b_${blockId}`);
-    let html = root.outerHTML;
+    let extraHtml = '';
+    if (Number(typeId) === 1600) {
+      const css = renderFlexBlock(root, merged, blockId);
+      if (css) extraHtml = `<style id="s_${blockId}">${css}</style>`;
+    }
+    let html = root.outerHTML + extraHtml;
     for (const [from, to] of REPLACEMENTS) html = html.replaceAll(from, to);
     return html;
   }
