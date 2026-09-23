@@ -135,6 +135,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
 | `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
+| `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article` | штатный редактор статей: тексты, URL, SEO, публикация, категории |
+| `tobiz_upload_article_image`, `tobiz_list_article_categories` | изображения и категории статей |
+| `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_delete_product` | управление товарами: цены, остатки, метки, размеры, SEO и видео |
+| `tobiz_upload_product_image`, `tobiz_list_product_categories` | галерея и категории товаров |
 
 Ответ инструмента: `{"ok": true, "data": {...}}` либо
 `{"ok": false, "error": {"code": "...", "message": "...", "hint": "..."}}`.
@@ -149,6 +153,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 панели конструктора: `tobiz_update_page` читает форму страницы, подменяет указанные поля и
 отправляет её целиком — такое изменение видно на сайте сразу. Копирование и удаление страницы
 (`tobiz_copy_page`, `tobiz_delete_page`) тоже применяются немедленно.
+
+Статьи и товары также редактируются отдельными штатными модулями TOBIZ и применяются сразу, без
+`tobiz_save_page`. Текст статьи принимает HTML CKEditor: изображения загружаются в ее галерею,
+а видео вставляется штатным `iframe`. В товаре доступны три поля видео (`video1`-`video3`).
 
 ## Полезно знать
 

@@ -14,6 +14,26 @@
 | `GET /js/blocks2.js` | catalogue шаблонов блоков (162 типа) |
 | `GET /json/sections.json` | палитра блоков: 28 категорий, 486 записей |
 | `GET /json/stylesFontsPresets.json` | пресеты шрифтов/стилей сайта — сюда смотреть за типографикой |
+| `POST /projects/articles/ajax/` | штатный редактор статей, категорий и изображений статей |
+| `POST /projects/products/ajax/` | штатный редактор товаров, категорий, вариантов и изображений |
+
+## Редакторы статей и товаров
+
+Оба редактора отвечают JSON вида `{"status":"OK","data":...}` и применяют изменения сразу.
+Это отдельный контур TOBIZ: `SaveBlocks` и черновик страницы здесь не используются.
+
+Статьи: `get_articles`, `get_article`, `add_article`, `update_article_str_data`,
+`update_article_description`, `update_article_dir`, `update_article_str_int`,
+`update_article_relations`, `set_visible`, `delete`. Изображение загружается multipart-запросом
+`upload_article_image` с `entity=article`, `article_id` и полем файла `image`.
+
+Товары: `get_items`, `get_item`, `add_item`, `update_item_str_data`,
+`update_item_description`, `update_item_dir`, `update_item_str_float`, `update_item_str_int`,
+`update_item_relations`, `set_visible`, `delete`. Изображение загружается через `upload_image` с
+`entity=image`, `item_id` и полем файла `image`. Значение `entity=item` сервер отклоняет.
+
+Полный текст и краткое описание статьи - HTML CKEditor; видео хранится внутри текста штатным
+`iframe`. Товар имеет отдельные поля `video1`, `video2`, `video3`.
 
 ## Действия панели (`/system/ajax.php`)
 

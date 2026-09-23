@@ -1,11 +1,11 @@
 ---
 name: tobiz-mcp
-description: Use when building or editing sites on the TOBIZ constructor through the tobiz MCP server (mcp__tobiz__* tools): projects and pages, blocks and their fields, drafts and saving, SEO, images, page copy/delete.
+description: Use when building or editing sites on the TOBIZ constructor through the tobiz MCP server (mcp__tobiz__* tools): projects, pages, blocks, SEO, images, articles and products.
 ---
 
 # TOBIZ через MCP: как работать и на чём спотыкаются
 
-Сервер `tobiz-mcp` даёт доступ к сайтам конструктора TOBIZ: 24 инструмента `tobiz_*`. Публичного
+Сервер `tobiz-mcp` даёт доступ к сайтам конструктора TOBIZ: 39 инструментов `tobiz_*`. Публичного
 API у конструктора нет — сервер работает с внутренними эндпоинтами редактора и панели, поэтому
 часть правил ниже неочевидна и выведена опытным путём.
 
@@ -48,6 +48,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_update_page` (SEO, название, slug, og:image, доступ) | сразу |
 | `tobiz_copy_page`, `tobiz_delete_page` | сразу (`delete_page` требует `confirm=true`) |
 | `tobiz_upload_image`, `tobiz_set_block_image` | сразу (файл загружается на сервер) |
+| статьи и товары (`create`/`update`/`delete`, загрузка фото) | сразу, без `tobiz_save_page` |
 
 ## Грабли (каждая проверена на живом сайте)
 
@@ -111,6 +112,12 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
     реальные серверные значения, оба состояния каждой галочки и все варианты каждого `select`.
 18. **Работай на отдельном сайте.** Правки блоков и SEO уходят на прод-страницу сразу;
     для экспериментов — `TOBIZ_READ_ONLY=1` и отдельный проект.
+19. **Статьи и товары - отдельные редакторы.** Они не используют черновик страницы и не требуют
+    `tobiz_save_page`. В статьях `description` и `short_description` - HTML CKEditor; видео
+    вставляется штатным `iframe`. У товара ссылки на видео лежат в `video1`-`video3`.
+20. **Загрузка фото товара отличается от статьи.** Статья отправляет
+    `action=upload_article_image, entity=article`, товар - `action=upload_image, entity=image`.
+    Подмена `entity=image` на `item` дает ошибку «Сущность не корректная».
 
 ## Красивый UI: как получить и с чего начать
 
@@ -164,6 +171,11 @@ hermes skills install https://raw.githubusercontent.com/elayadesign/ai-design-sk
 * **Собрать новую посадочную на своей площадке**: `copy_page` под тестовую страницу → переписать
   тексты в блоках (`update_block`) → `update_page` (slug + SEO) → `save_page` → `verify_page` →
   замеры в браузере (кнопки, отступы, мобильный вид).
+* **Создать статью с фото и видео**: `create_article(fields={title, dir, description, ...})` →
+  `upload_article_image` → `get_article`. Для видео передай HTML штатного `iframe` в
+  `description`; результат появляется сразу.
+* **Создать товар**: `create_product(fields={title, price, quantity, video1, ...})` →
+  `upload_product_image` → `get_product`. Категории передаются полным списком `category_ids`.
 
 ## Экономия контекста
 

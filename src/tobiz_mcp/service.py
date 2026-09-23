@@ -152,6 +152,116 @@ class Service:
     async def block_types(self, project_id: str) -> dict[str, BlockType]:
         return await self.catalog.types(project_id)
 
+    # --- статьи и товары ---
+
+    async def module_list(self, project_id: str, kind: str, *, limit: int = 30,
+                          page: int = 1, category: str = "all", search: str = "",
+                          order_by: str = "sort_id") -> dict[str, Any]:
+        await self.project(project_id)
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        action = "get_articles" if kind == "article" else "get_items"
+        return await self.client.module_ajax(path, action, project_id, limit=limit, page=page,
+                                             category=category, search=search, order_by=order_by)
+
+    async def module_categories(self, project_id: str, kind: str) -> list[dict[str, Any]]:
+        await self.project(project_id)
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        data = await self.client.module_ajax(path, "get_categories", project_id)
+        return data if isinstance(data, list) else []
+
+    async def module_get(self, project_id: str, kind: str, entity_id: str) -> dict[str, Any]:
+        await self.project(project_id)
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        action = "get_article" if kind == "article" else "get_item"
+        data = await self.client.module_ajax(path, action, project_id, id=entity_id)
+        if not isinstance(data, dict) or not data.get("id"):
+            raise errors.TobizError(errors.NOT_FOUND, f"Объект {entity_id} не найден")
+        return data
+
+    async def module_create(self, project_id: str, kind: str) -> dict[str, Any]:
+        before = await self.module_list(project_id, kind, limit=100)
+        key = "articles" if kind == "article" else "items"
+        before_ids = {str(item.get("id")) for item in before.get(key, [])}
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        action = "add_article" if kind == "article" else "add_item"
+        created = await self.client.module_ajax(path, action, project_id)
+        if isinstance(created, dict) and created.get("id"):
+            return await self.module_get(project_id, kind, str(created["id"]))
+        after = await self.module_list(project_id, kind, limit=100)
+        new_ids = [str(item.get("id")) for item in after.get(key, [])
+                   if str(item.get("id")) not in before_ids]
+        if len(new_ids) != 1:
+            raise errors.TobizError(errors.SAVE_FAILED,
+                                    "TOBIZ создал объект, но не удалось однозначно определить id")
+        return await self.module_get(project_id, kind, new_ids[0])
+
+    async def module_update(self, project_id: str, kind: str, entity_id: str,
+                            fields: dict[str, Any], category_ids: list[str] | None = None) -> dict[str, Any]:
+        current = await self.module_get(project_id, kind, entity_id)
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        if kind == "article":
+            groups = {
+                "update_article_str_data": {"title", "seo_title", "seo_keywords", "seo_description", "publication_date"},
+                "update_article_description": {"description", "short_description"},
+                "update_article_dir": {"dir"},
+                "update_article_str_int": {"sort_id"},
+            }
+        else:
+            groups = {
+                "update_item_str_data": {"title", "vendor_code", "vendor", "brand", "material",
+                                         "seo_title", "seo_keywords", "seo_description",
+                                         "video1", "video2", "video3"},
+                "update_item_description": {"description", "short_description"},
+                "update_item_dir": {"dir"},
+                "update_item_str_float": {"price", "quantity", "discount", "step", "min_in_order",
+                                          "max_in_order", "width", "depth", "height", "weight"},
+                "update_item_str_int": {"sort_id", "discount_type", "novelty", "sale", "bestseller",
+                                        "not_available"},
+            }
+        allowed = set().union(*groups.values()) | {"visible"}
+        unknown = sorted(set(fields) - allowed)
+        if unknown:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    f"Неизвестные поля {kind}: {', '.join(unknown)}")
+        for action, names in groups.items():
+            for name in names & fields.keys():
+                await self.client.module_ajax(path, action, project_id, id=entity_id,
+                                              name=name, val=fields[name])
+        if "visible" in fields:
+            await self.client.module_ajax(path, "set_visible", project_id, id=entity_id,
+                                          entity=kind, val=1 if fields["visible"] else 0)
+        if category_ids is not None:
+            relation_action = "update_article_relations" if kind == "article" else "update_item_relations"
+            id_name = "article_id" if kind == "article" else "item_id"
+            old_categories = {str(value) for value in current.get("categories", [])}
+            new_categories = {str(value) for value in category_ids}
+            for category_id in old_categories | new_categories:
+                await self.client.module_ajax(path, relation_action, project_id,
+                                              **{id_name: entity_id, "category_id": category_id,
+                                                 "val": 1 if category_id in new_categories else 0})
+        return await self.module_get(project_id, kind, entity_id)
+
+    async def module_delete(self, project_id: str, kind: str, entity_id: str) -> dict[str, Any]:
+        await self.module_get(project_id, kind, entity_id)
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        result = await self.client.module_ajax(path, "delete", project_id,
+                                               id=entity_id, entity=kind)
+        return {"id": entity_id, "deleted": bool(result)}
+
+    async def module_upload_image(self, project_id: str, kind: str, entity_id: str,
+                                  path: str | None = None, content_base64: str | None = None,
+                                  file_name: str | None = None) -> dict[str, Any]:
+        await self.module_get(project_id, kind, entity_id)
+        prepared = upload_module.prepare(self.config, path, content_base64, file_name)
+        endpoint = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        action = "upload_article_image" if kind == "article" else "upload_image"
+        id_name = "article_id" if kind == "article" else "item_id"
+        upload_entity = "article" if kind == "article" else "image"
+        await self.client.module_upload(endpoint, project_id, action, upload_entity, id_name, entity_id,
+                                        prepared.file_name, prepared.content, prepared.content_type)
+        entity = await self.module_get(project_id, kind, entity_id)
+        return {"id": entity_id, "images": entity.get("images", [])}
+
     async def audit_catalog(self, project_id: str,
                             type_ids: list[str] | None = None) -> dict[str, Any]:
         await self.catalog.ensure_assets(project_id)

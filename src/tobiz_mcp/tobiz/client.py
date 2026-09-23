@@ -105,6 +105,59 @@ class TobizClient:
                                 referer=self.config.editor_url(self._project_of(lp_base), page_id),
                                 origin=lp_base)
 
+    async def module_ajax(self, path: str, action: str, project_id: str,
+                          **params: Any) -> dict[str, Any]:
+        """Запрос к штатным редакторам статей и товаров."""
+        await self.ensure_session()
+        data = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v))
+                for k, v in params.items() if v is not None}
+        data.update({"action": action, "project_id": str(project_id)})
+        response = await self._request(
+            "POST", path, data=data,
+            headers={"accept": "application/json, text/javascript, */*; q=0.01",
+                     "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                     "x-requested-with": "XMLHttpRequest"},
+            referer=f"{self.config.base_url}{path.rsplit('/ajax/', 1)[0]}/?id={project_id}",
+            origin=self.config.base_url,
+        )
+        try:
+            payload = json.loads(response.content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise errors.TobizError(errors.UPSTREAM_UNAVAILABLE,
+                                    "Редактор TOBIZ вернул неразбираемый ответ", raw=str(exc))
+        if str(payload.get("status", "")).upper() != "OK":
+            raise errors.TobizError(errors.SAVE_FAILED,
+                                    str(payload.get("description") or "TOBIZ отклонил действие"),
+                                    raw=payload)
+        return payload.get("data")
+
+    async def module_upload(self, path: str, project_id: str, action: str,
+                            entity: str, entity_id_name: str, entity_id: str,
+                            file_name: str, content: bytes, content_type: str) -> dict[str, Any]:
+        await self.ensure_session()
+        response = await self._request(
+            "POST", path,
+            data={"action": action, "entity": entity, "project_id": str(project_id),
+                  entity_id_name: str(entity_id)},
+            files={"image": (file_name, content, content_type)},
+            headers={"accept": "application/json, text/javascript, */*; q=0.01",
+                     "x-requested-with": "XMLHttpRequest"},
+            referer=f"{self.config.base_url}{path.rsplit('/ajax/', 1)[0]}/?id={project_id}",
+            origin=self.config.base_url,
+        )
+        try:
+            payload = json.loads(response.content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise errors.TobizError(errors.UPLOAD_REJECTED,
+                                    "Редактор TOBIZ вернул неразбираемый ответ загрузки",
+                                    raw=str(exc))
+        if str(payload.get("status", "")).upper() != "OK":
+            raise errors.TobizError(errors.UPLOAD_REJECTED,
+                                    str(payload.get("description") or "Изображение не загружено"),
+                                    raw=payload)
+        data = payload.get("data")
+        return data if isinstance(data, dict) else {"result": data}
+
     @staticmethod
     def _project_of(lp_base: str) -> str:
         match = re.match(r"https?://([0-9]+)\.", lp_base or "")

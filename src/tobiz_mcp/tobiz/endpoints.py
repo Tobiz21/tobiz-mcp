@@ -12,6 +12,10 @@ PANEL_AJAX_ACTION_COPY_PAGE_FORM = "copy_page_to_anp_form"
 PANEL_AJAX_ACTION_COPY_PAGE = "copy_page_to_anp"
 PANEL_AJAX_ACTION_DELETE_PAGE = "delete_page"
 
+# Модули статей и интернет-магазина в панели проекта
+ARTICLES_AJAX = "/projects/articles/ajax/"
+PRODUCTS_AJAX = "/projects/products/ajax/"
+
 # Редактор: всё, что связано со страницей и блоками
 EDITOR_AJAX = "/system/editor/ajax.php"
 EDITOR_UPLOAD = "/system/editor/upload.php"

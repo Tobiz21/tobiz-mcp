@@ -31,7 +31,9 @@ READ_TOOLS = {
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
-    "tobiz_page_info", "tobiz_audit_catalog",
+    "tobiz_page_info", "tobiz_audit_catalog", "tobiz_list_articles", "tobiz_get_article",
+    "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
+    "tobiz_list_product_categories",
 }
 
 
@@ -272,6 +274,140 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["failures"] = failures[:200]
         result["failures_truncated"] = max(0, len(failures) - 200)
         return result
+
+    # --- статьи ---
+
+    @tool("tobiz_list_articles",
+          "Список статей проекта с фильтром категории, поиском и пагинацией.")
+    async def tobiz_list_articles(project_id: Id | None = None, limit: int = 30,
+                                  page: int = 1, category: Id = "all",
+                                  search: str = "", order_by: str = "sort_id") -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_list(project.project_id, "article", limit=limit, page=page,
+                                         category=category, search=search, order_by=order_by)
+
+    @tool("tobiz_get_article",
+          "Полная статья: текст CKEditor, краткое описание, SEO, категории и изображения.")
+    async def tobiz_get_article(project_id: Id | None = None,
+                                article_id: Id = "") -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_get(project.project_id, "article", article_id)
+
+    @tool("tobiz_list_article_categories", "Категории статей проекта.")
+    async def tobiz_list_article_categories(project_id: Id | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        categories = await service.module_categories(project.project_id, "article")
+        return {"categories": categories, "count": len(categories)}
+
+    @tool("tobiz_create_article",
+          "Создать статью штатным редактором TOBIZ и сразу заполнить поля. description и "
+          "short_description принимают HTML CKEditor, включая штатные iframe видео.")
+    async def tobiz_create_article(project_id: Id | None = None,
+                                   fields: dict[str, Any] | None = None,
+                                   category_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        article = await service.module_create(project.project_id, "article")
+        if fields or category_ids is not None:
+            article = await service.module_update(project.project_id, "article", str(article["id"]),
+                                                  fields or {}, list(category_ids or []))
+        return article
+
+    @tool("tobiz_update_article",
+          "Изменить статью. Поддерживаются title, dir, description, short_description, SEO, "
+          "publication_date, sort_id, visible и полный список category_ids.")
+    async def tobiz_update_article(project_id: Id | None = None, article_id: Id = "",
+                                   fields: dict[str, Any] | None = None,
+                                   category_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_update(project.project_id, "article", article_id,
+                                           fields or {}, None if category_ids is None
+                                           else list(category_ids))
+
+    @tool("tobiz_upload_article_image",
+          "Загрузить изображение в галерею статьи из path или content_base64.")
+    async def tobiz_upload_article_image(project_id: Id | None = None,
+                                         article_id: Id = "", path: str | None = None,
+                                         content_base64: str | None = None,
+                                         file_name: str | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_upload_image(project.project_id, "article", article_id,
+                                                 path, content_base64, file_name)
+
+    @tool("tobiz_delete_article",
+          "Удалить статью сразу. Требует confirm=true.")
+    async def tobiz_delete_article(project_id: Id | None = None, article_id: Id = "",
+                                   confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Удаление статьи требует confirm=true")
+        project = await service.project(project_id)
+        return await service.module_delete(project.project_id, "article", article_id)
+
+    # --- товары ---
+
+    @tool("tobiz_list_products",
+          "Список товаров проекта с фильтром категории, поиском, сортировкой и пагинацией.")
+    async def tobiz_list_products(project_id: Id | None = None, limit: int = 30,
+                                  page: int = 1, category: Id = "all",
+                                  search: str = "", order_by: str = "sort_id") -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_list(project.project_id, "item", limit=limit, page=page,
+                                         category=category, search=search, order_by=order_by)
+
+    @tool("tobiz_get_product",
+          "Полная карточка товара: цены, остаток, текст, SEO, видео, категории, фото и свойства.")
+    async def tobiz_get_product(project_id: Id | None = None,
+                                product_id: Id = "") -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_get(project.project_id, "item", product_id)
+
+    @tool("tobiz_list_product_categories", "Категории интернет-магазина проекта.")
+    async def tobiz_list_product_categories(project_id: Id | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        categories = await service.module_categories(project.project_id, "item")
+        return {"categories": categories, "count": len(categories)}
+
+    @tool("tobiz_create_product",
+          "Создать товар штатным редактором TOBIZ и сразу заполнить карточку.")
+    async def tobiz_create_product(project_id: Id | None = None,
+                                   fields: dict[str, Any] | None = None,
+                                   category_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        product = await service.module_create(project.project_id, "item")
+        if fields or category_ids is not None:
+            product = await service.module_update(project.project_id, "item", str(product["id"]),
+                                                  fields or {}, list(category_ids or []))
+        return product
+
+    @tool("tobiz_update_product",
+          "Изменить карточку товара: тексты, URL, SEO, цену, скидку, остаток, размеры, метки, "
+          "video1-video3, видимость и категории.")
+    async def tobiz_update_product(project_id: Id | None = None, product_id: Id = "",
+                                   fields: dict[str, Any] | None = None,
+                                   category_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_update(project.project_id, "item", product_id,
+                                           fields or {}, None if category_ids is None
+                                           else list(category_ids))
+
+    @tool("tobiz_upload_product_image",
+          "Загрузить изображение в галерею товара из path или content_base64.")
+    async def tobiz_upload_product_image(project_id: Id | None = None,
+                                         product_id: Id = "", path: str | None = None,
+                                         content_base64: str | None = None,
+                                         file_name: str | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_upload_image(project.project_id, "item", product_id,
+                                                 path, content_base64, file_name)
+
+    @tool("tobiz_delete_product", "Удалить товар сразу. Требует confirm=true.")
+    async def tobiz_delete_product(project_id: Id | None = None, product_id: Id = "",
+                                   confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Удаление товара требует confirm=true")
+        project = await service.project(project_id)
+        return await service.module_delete(project.project_id, "item", product_id)
 
     # --- запись ---
 
