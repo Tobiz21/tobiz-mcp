@@ -15,7 +15,10 @@ ENV PYTHONUNBUFFERED=1 \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
- && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+ && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends chromium \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -23,7 +26,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir .
 
-# Рендерер: jsdom — единственная npm-зависимость
+# Рендерер и браузерный аудит: jsdom + playwright-core, браузер берется из образа.
 COPY renderer ./renderer
 RUN cd /app/renderer && npm install --omit=dev --no-audit --no-fund \
  && npm cache clean --force

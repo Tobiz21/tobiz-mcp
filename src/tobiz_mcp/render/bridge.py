@@ -18,6 +18,7 @@ class RenderBridge:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.script = config.renderer_dir / "bridge.js"
+        self.inspector_script = config.renderer_dir / "page-inspector.js"
 
     @property
     def available(self) -> bool:
@@ -93,3 +94,27 @@ class RenderBridge:
             "type_ids": [str(value) for value in (type_ids or [])],
             "samples_by_type": samples_by_type or {},
         })
+
+    async def inspect_page(self, url: str, output_dir: Path, *,
+                           viewports: list[str] | None = None,
+                           screenshot: bool = True) -> dict[str, Any]:
+        if not self.inspector_script.exists() or shutil.which(self.config.node_bin) is None:
+            raise errors.TobizError(errors.RENDER_FAILED, "Браузерный инспектор недоступен")
+        payload = json.dumps({
+            "url": url, "output_dir": str(output_dir), "viewports": viewports or ["desktop", "mobile"],
+            "screenshot": screenshot, "timeout_ms": self.config.http_timeout * 1000,
+        }, ensure_ascii=False)
+        process = await asyncio.create_subprocess_exec(
+            self.config.node_bin, str(self.inspector_script), stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(payload.encode("utf-8")), timeout=self.config.render_timeout * 2)
+        try:
+            result = json.loads(stdout.decode("utf-8", "replace"))
+        except json.JSONDecodeError as exc:
+            raise errors.TobizError(errors.RENDER_FAILED, f"Инспектор вернул не JSON: {exc}",
+                                    stderr.decode("utf-8", "replace")[-500:])
+        if not result.get("ok"):
+            raise errors.TobizError(errors.RENDER_FAILED, "Не удалось проверить публичную страницу",
+                                    str(result.get("error") or stderr.decode("utf-8", "replace"))[-500:])
+        return result

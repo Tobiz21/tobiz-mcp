@@ -34,6 +34,9 @@ READ_TOOLS = {
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_list_articles", "tobiz_get_article",
     "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
     "tobiz_list_product_categories",
+    "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
+    "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_list_product_offers",
+    "tobiz_get_product_offer",
 }
 
 
@@ -333,6 +336,14 @@ def register(mcp: Any, service: Service) -> list[str]:
         return await service.module_upload_image(project.project_id, "article", article_id,
                                                  path, content_base64, file_name)
 
+    @tool("tobiz_sort_article_images",
+          "Изменить порядок изображений статьи штатной сортировкой TOBIZ. Передайте все image_ids.")
+    async def tobiz_sort_article_images(project_id: Id | None = None, article_id: Id = "",
+                                        image_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_sort_images(project.project_id, "article", article_id,
+                                                list(image_ids or []))
+
     @tool("tobiz_delete_article",
           "Удалить статью сразу. Требует confirm=true.")
     async def tobiz_delete_article(project_id: Id | None = None, article_id: Id = "",
@@ -399,6 +410,49 @@ def register(mcp: Any, service: Service) -> list[str]:
         project = await service.project(project_id)
         return await service.module_upload_image(project.project_id, "item", product_id,
                                                  path, content_base64, file_name)
+
+    @tool("tobiz_sort_product_images",
+          "Изменить порядок изображений товара штатной сортировкой TOBIZ. Передайте все image_ids.")
+    async def tobiz_sort_product_images(project_id: Id | None = None, product_id: Id = "",
+                                        image_ids: list[Id] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.module_sort_images(project.project_id, "item", product_id,
+                                                list(image_ids or []))
+
+    @tool("tobiz_list_product_offers", "Список вариантов (offers) товара.")
+    async def tobiz_list_product_offers(project_id: Id | None = None,
+                                        product_id: Id = "") -> dict[str, Any]:
+        project = await service.project(project_id)
+        offers = await service.product_offers(project.project_id, product_id)
+        return {"offers": offers, "count": len(offers)}
+
+    @tool("tobiz_get_product_offer", "Получить вариант товара: название, артикул, цену, остаток и фото.")
+    async def tobiz_get_product_offer(project_id: Id | None = None,
+                                      offer_id: Id = "") -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.product_offer_get(project.project_id, offer_id)
+
+    @tool("tobiz_create_product_offer",
+          "Создать штатный вариант товара. fields: title, vendor_code, price, quantity, image_id.")
+    async def tobiz_create_product_offer(project_id: Id | None = None, product_id: Id = "",
+                                         fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.product_offer_create(project.project_id, product_id, fields)
+
+    @tool("tobiz_update_product_offer",
+          "Изменить штатный вариант товара. fields: title, vendor_code, price, quantity, image_id.")
+    async def tobiz_update_product_offer(project_id: Id | None = None, offer_id: Id = "",
+                                         fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        project = await service.project(project_id)
+        return await service.product_offer_update(project.project_id, offer_id, fields or {})
+
+    @tool("tobiz_delete_product_offer", "Удалить вариант товара. Требует confirm=true.")
+    async def tobiz_delete_product_offer(project_id: Id | None = None, offer_id: Id = "",
+                                         confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Удаление варианта требует confirm=true")
+        project = await service.project(project_id)
+        return await service.product_offer_delete(project.project_id, offer_id)
 
     @tool("tobiz_delete_product", "Удалить товар сразу. Требует confirm=true.")
     async def tobiz_delete_product(project_id: Id | None = None, product_id: Id = "",
@@ -517,6 +571,23 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"project_id": project_id, "page_id": page_id, "title": page.title,
                 "url": page.url, "visible": page.visible, "page": form.to_dict()}
 
+    @tool("tobiz_get_site_styles",
+          "Глобальные стили страницы из штатного page_config: шрифты текста/заголовков/меню и цвета кнопок.")
+    async def tobiz_get_site_styles(project_id: Id | None = None,
+                                    page_id: Id = "", refresh: bool = False) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return {"page_id": page_id, "styles": await service.site_styles(project_id, page_id, refresh)}
+
+    @tool("tobiz_update_site_styles",
+          "Изменить штатный page_config. Поддерживает text/title/menu font, fontsize, fweight и "
+          "btn_bg/btn_bg_hover. apply_to_all_pages=true применяет конфигурацию ко всем страницам; "
+          "затем каждую измененную страницу нужно сохранить через tobiz_save_page.")
+    async def tobiz_update_site_styles(project_id: Id | None = None, page_id: Id = "",
+                                       styles: dict[str, Any] | None = None,
+                                       apply_to_all_pages: bool = False) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return await service.update_site_styles(project_id, page_id, styles or {}, apply_to_all_pages)
+
     @tool("tobiz_update_page",
           "Изменить параметры страницы: title (название), dir (URL/slug), seo_title, "
           "seo_description, seo_keywords, og_image (имя загруженного файла), valid_login, "
@@ -588,6 +659,39 @@ def register(mcp: Any, service: Service) -> list[str]:
             draft = await service.draft(project_id, page_id)
             block_ids = [b for b in draft.order]
         return await service.verify_page(project_id, page_id, expect, block_ids)
+
+    @tool("tobiz_get_computed_styles",
+          "Прочитать реальные вычисленные стили публичной страницы на desktop/mobile: body, заголовки, текст, ссылки, кнопки и поля.")
+    async def tobiz_get_computed_styles(project_id: Id | None = None, page_id: Id = "",
+                                        viewports: list[str] | None = None) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        report = await service.inspect_page(project_id, page_id, screenshot=False, viewports=viewports)
+        return {name: data.get("computedStyles") for name, data in report.get("viewports", {}).items()}
+
+    @tool("tobiz_screenshot_page",
+          "Сделать полностраничные PNG-снимки публичной страницы в desktop и mobile и вернуть пути к файлам.")
+    async def tobiz_screenshot_page(project_id: Id | None = None, page_id: Id = "",
+                                    viewports: list[str] | None = None) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        report = await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
+        return {name: data.get("screenshot") for name, data in report.get("viewports", {}).items()}
+
+    @tool("tobiz_diagnose_interactions",
+          "Проверить формы, поля, кнопки, ссылки, якоря и попапы на desktop/mobile без отправки заявок.")
+    async def tobiz_diagnose_interactions(project_id: Id | None = None, page_id: Id = "",
+                                          viewports: list[str] | None = None) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        report = await service.inspect_page(project_id, page_id, screenshot=False, viewports=viewports)
+        return {"viewports": {name: data.get("interactions") for name, data in report.get("viewports", {}).items()},
+                "consoleErrors": report.get("consoleErrors"), "pageErrors": report.get("pageErrors")}
+
+    @tool("tobiz_audit_page",
+          "Полный аудит публичной страницы одной командой: desktop/mobile-снимки, computed styles, переполнение, "
+          "битые изображения, пустые заголовки, формы, кнопки, ссылки, попапы и ошибки JavaScript.")
+    async def tobiz_audit_page(project_id: Id | None = None, page_id: Id = "",
+                               viewports: list[str] | None = None) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
 
     @tool("tobiz_upload_image",
           "Загрузить изображение в конструктор. path — файл внутри /data/inbox, либо "

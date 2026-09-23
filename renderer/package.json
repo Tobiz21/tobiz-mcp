@@ -8,6 +8,7 @@
     "test": "node --test vendor-runtime.test.js"
   },
   "dependencies": {
-    "jsdom": "29.1.1"
+    "jsdom": "29.1.1",
+    "playwright-core": "1.55.0"
   }
 }

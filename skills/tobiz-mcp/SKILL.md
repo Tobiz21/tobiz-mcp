@@ -5,7 +5,7 @@ description: Use when building or editing sites on the TOBIZ constructor through
 
 # TOBIZ через MCP: как работать и на чём спотыкаются
 
-Сервер `tobiz-mcp` даёт доступ к сайтам конструктора TOBIZ: 39 инструментов `tobiz_*`. Публичного
+Сервер `tobiz-mcp` даёт доступ к сайтам конструктора TOBIZ: 52 инструмента `tobiz_*`. Публичного
 API у конструктора нет — сервер работает с внутренними эндпоинтами редактора и панели, поэтому
 часть правил ниже неочевидна и выведена опытным путём.
 
@@ -37,7 +37,8 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 5. Правки: `tobiz_add_block` / `tobiz_update_block` / `tobiz_delete_block` / `tobiz_move_block`.
    Всё это живёт **в черновике** в памяти сервера.
 6. Записать на сайт: `tobiz_save_page` — рендерит HTML блоков и отправляет `SaveBlocks`.
-7. Проверить результат по **публичной вёрстке**: `tobiz_verify_page` (или `page_summary`).
+7. Проверить результат по **публичной вёрстке**: `tobiz_audit_page` сразу делает desktop/mobile
+   снимки, читает computed styles и проверяет формы, кнопки, попапы, изображения и переполнение.
 
 ## Что пишет сразу, а что нет
 
@@ -49,6 +50,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_copy_page`, `tobiz_delete_page` | сразу (`delete_page` требует `confirm=true`) |
 | `tobiz_upload_image`, `tobiz_set_block_image` | сразу (файл загружается на сервер) |
 | статьи и товары (`create`/`update`/`delete`, загрузка фото) | сразу, без `tobiz_save_page` |
+| глобальные стили (`tobiz_update_site_styles`) | черновик; применяются через `tobiz_save_page` |
 
 ## Грабли (каждая проверена на живом сайте)
 
@@ -118,6 +120,15 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 20. **Загрузка фото товара отличается от статьи.** Статья отправляет
     `action=upload_article_image, entity=article`, товар - `action=upload_image, entity=image`.
     Подмена `entity=image` на `item` дает ошибку «Сущность не корректная».
+21. **Сортировка изображений требует полный порядок.** Передавай в `sort_article_images` или
+    `sort_product_images` все текущие `image_ids` ровно по одному разу. MCP проверяет набор до
+    записи, затем вызывает штатные `sort_article_images`/`sort_images`.
+22. **Варианты товара - это offers.** Создание привязано к `product_id`; редактируются `title`,
+    `vendor_code`, `price`, `quantity`, `image_id`. Фото варианта выбирается только из галереи
+    родительского товара.
+23. **Стили сайта правь через `page_config`.** `tobiz_update_site_styles` меняет штатные поля
+    `text_*`, `title_*`, `menu_*`, `btn_bg`, `btn_bg_hover`. При `apply_to_all_pages=true`
+    сохраняй каждую возвращенную страницу через `tobiz_save_page`.
 
 ## Красивый UI: как получить и с чего начать
 
@@ -152,8 +163,10 @@ hermes skills install https://raw.githubusercontent.com/elayadesign/ai-design-sk
 
 * `tobiz_verify_page` с `expect=[...]` — есть ли тексты в публичной вёрстке;
 * `tobiz_page_summary` — состав блоков и порядок;
-* для стилей (цвета, радиусы, скрытые попап-формы) — открыть страницу браузером и посмотреть
-  `getComputedStyle`: у скрытых элементов стили всё равно читаются, а в разметке их не видно.
+* `tobiz_get_computed_styles` - реальные шрифты, цвета, размеры и радиусы на desktop/mobile;
+* `tobiz_diagnose_interactions` - формы, кнопки, ссылки и попапы без отправки заявок;
+* `tobiz_screenshot_page` - полностраничные desktop/mobile PNG;
+* `tobiz_audit_page` - все проверки выше плюс переполнение, изображения и JS-ошибки одной командой.
 
 ## Короткие рецепты
 
@@ -175,7 +188,8 @@ hermes skills install https://raw.githubusercontent.com/elayadesign/ai-design-sk
   `upload_article_image` → `get_article`. Для видео передай HTML штатного `iframe` в
   `description`; результат появляется сразу.
 * **Создать товар**: `create_product(fields={title, price, quantity, video1, ...})` →
-  `upload_product_image` → `get_product`. Категории передаются полным списком `category_ids`.
+  `upload_product_image` → `sort_product_images` → `create_product_offer` → `get_product`.
+  Категории передаются полным списком `category_ids`.
 
 ## Экономия контекста
 

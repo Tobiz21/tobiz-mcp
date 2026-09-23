@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from typing import Any
 
 from . import errors, log
@@ -146,6 +147,7 @@ class Service:
         if refresh:
             draft.blocks.clear()
             draft.order.clear()
+            draft.changed_meta.clear()
         self.drafts.load_blocks(draft, raw_blocks)
         return draft
 
@@ -261,6 +263,121 @@ class Service:
                                         prepared.file_name, prepared.content, prepared.content_type)
         entity = await self.module_get(project_id, kind, entity_id)
         return {"id": entity_id, "images": entity.get("images", [])}
+
+    async def module_sort_images(self, project_id: str, kind: str, entity_id: str,
+                                 image_ids: list[str]) -> dict[str, Any]:
+        entity = await self.module_get(project_id, kind, entity_id)
+        current = [str(image.get("id")) for image in entity.get("images", []) if image.get("id")]
+        requested = [str(value) for value in image_ids]
+        if len(requested) != len(set(requested)) or set(requested) != set(current):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "image_ids должен содержать все текущие изображения ровно по одному разу",
+                                    f"Текущий порядок: {current}")
+        path = ep.ARTICLES_AJAX if kind == "article" else ep.PRODUCTS_AJAX
+        action = "sort_article_images" if kind == "article" else "sort_images"
+        params = {f"sort[{index}][0]": image_id for index, image_id in enumerate(requested)}
+        params.update({f"sort[{index}][1]": index for index in range(len(requested))})
+        await self.client.module_ajax(path, action, project_id, **params)
+        updated = await self.module_get(project_id, kind, entity_id)
+        return {"id": entity_id, "images": updated.get("images", [])}
+
+    async def product_offer_get(self, project_id: str, offer_id: str) -> dict[str, Any]:
+        await self.project(project_id)
+        data = await self.client.module_ajax(ep.PRODUCTS_AJAX, "get_offer", project_id, id=offer_id)
+        if not isinstance(data, dict) or not data.get("id"):
+            raise errors.TobizError(errors.NOT_FOUND, f"Вариант товара {offer_id} не найден")
+        return data
+
+    async def product_offers(self, project_id: str, product_id: str) -> list[dict[str, Any]]:
+        current = await self.module_get(project_id, "item", product_id)
+        if isinstance(current.get("offers"), list):
+            return list(current["offers"])
+        data = await self.module_list(project_id, "item", limit=100,
+                                      search=str(current.get("title") or ""))
+        item = next((value for value in data.get("items", [])
+                     if str(value.get("id")) == str(product_id)), None)
+        return list((item or {}).get("offers") or [])
+
+    async def product_offer_create(self, project_id: str, product_id: str,
+                                   fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        before = {str(value.get("id")) for value in await self.product_offers(project_id, product_id)}
+        created = await self.client.module_ajax(ep.PRODUCTS_AJAX, "add_offer", project_id, id=product_id)
+        offer_id = str(created.get("id")) if isinstance(created, dict) and created.get("id") else ""
+        if not offer_id:
+            after = await self.product_offers(project_id, product_id)
+            new_ids = [str(value.get("id")) for value in after if str(value.get("id")) not in before]
+            if len(new_ids) != 1:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "Вариант создан, но TOBIZ не позволил однозначно определить id")
+            offer_id = new_ids[0]
+        return await self.product_offer_update(project_id, offer_id, fields or {})
+
+    async def product_offer_update(self, project_id: str, offer_id: str,
+                                   fields: dict[str, Any]) -> dict[str, Any]:
+        await self.product_offer_get(project_id, offer_id)
+        groups = {"update_offer_str_data": {"title", "vendor_code"},
+                  "update_offer_str_float": {"price", "quantity"}}
+        allowed = set().union(*groups.values()) | {"image_id"}
+        unknown = sorted(set(fields) - allowed)
+        if unknown:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    f"Неизвестные поля варианта: {', '.join(unknown)}")
+        for action, names in groups.items():
+            for name in names & fields.keys():
+                await self.client.module_ajax(ep.PRODUCTS_AJAX, action, project_id,
+                                              id=offer_id, name=name, val=fields[name])
+        if "image_id" in fields:
+            await self.client.module_ajax(ep.PRODUCTS_AJAX, "set_offer_iamge", project_id,
+                                          id=offer_id, image_id=fields["image_id"])
+        return await self.product_offer_get(project_id, offer_id)
+
+    async def product_offer_delete(self, project_id: str, offer_id: str) -> dict[str, Any]:
+        await self.product_offer_get(project_id, offer_id)
+        result = await self.client.module_ajax(ep.PRODUCTS_AJAX, "delete", project_id,
+                                               id=offer_id, entity="offer")
+        return {"id": offer_id, "deleted": bool(result)}
+
+    async def site_styles(self, project_id: str, page_id: str, refresh: bool = False) -> dict[str, Any]:
+        draft = await self.draft(project_id, page_id, refresh=refresh)
+        config = draft.page_meta.get("page_config") or {}
+        return dict(config) if isinstance(config, dict) else {}
+
+    async def update_site_styles(self, project_id: str, page_id: str, styles: dict[str, Any],
+                                 apply_to_all_pages: bool = False) -> dict[str, Any]:
+        known = {"text_font", "text_fontsize", "text_fweight", "title_font", "title_fontsize",
+                 "title_fweight", "menu_font", "menu_fontsize", "menu_fweight", "btn_bg",
+                 "btn_bg_hover"}
+        targets = [page_id]
+        if apply_to_all_pages:
+            _, pages = await self.pages(project_id, refresh=True)
+            targets = [page.page_id for page in pages]
+        changed_pages = []
+        for target in targets:
+            draft = await self.draft(project_id, target)
+            current = draft.page_meta.get("page_config") or {}
+            current = dict(current) if isinstance(current, dict) else {}
+            unknown = sorted(set(styles) - known - set(current))
+            if unknown:
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Неизвестные поля оформления: {', '.join(unknown)}")
+            changed = [key for key, value in styles.items() if current.get(key) != value]
+            current.update(styles)
+            draft.page_meta["page_config"] = current
+            for key in changed:
+                marker = f"page_config.{key}"
+                if marker not in draft.changed_meta:
+                    draft.changed_meta.append(marker)
+            if changed:
+                changed_pages.append({"page_id": target, "changed_fields": changed})
+        return {"pages": changed_pages, "pending_save": bool(changed_pages)}
+
+    async def inspect_page(self, project_id: str, page_id: str, *, screenshot: bool = True,
+                           viewports: list[str] | None = None) -> dict[str, Any]:
+        await self.resolve_page(project_id, page_id)
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+        output = Path(self.config.audit_dir) / "screenshots" / str(project_id) / str(page_id) / stamp
+        return await self.bridge.inspect_page(self.config.public_url(project_id, page_id), output,
+                                              viewports=viewports, screenshot=screenshot)
 
     async def audit_catalog(self, project_id: str,
                             type_ids: list[str] | None = None) -> dict[str, Any]:
@@ -711,6 +828,8 @@ class Service:
         changed_blocks = list(draft.changed_blocks)
         for block_id in changed_blocks:
             draft.blocks[block_id].changed_paths = []
+        changed_meta = list(draft.changed_meta)
+        draft.changed_meta.clear()
         await self.audit("tobiz_save_page", project_id, page_id=page_id,
                          extra={"blocks_total": len(items), "blocks_changed": len(changed_blocks),
                                 "change_hash": change_hash, "result": "ok"})
@@ -719,6 +838,7 @@ class Service:
             "saved": True,
             "blocks_total": len(items),
             "blocks_changed": len(changed_blocks),
+            "meta_changed": changed_meta,
             "change_hash": change_hash,
             "response": envelope.message or envelope.status,
         }

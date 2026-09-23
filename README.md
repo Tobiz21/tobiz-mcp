@@ -127,6 +127,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_page_info` | параметры страницы как в панели: название, URL, SEO, og:image, доступ |
 | `tobiz_search_blocks`, `tobiz_describe_block` | поиск по библиотеке блоков, схема полей типа |
 | `tobiz_audit_catalog` | аудит всех типов, галочек, списков, серверных значений и flex-вариантов |
+| `tobiz_get_site_styles`, `tobiz_update_site_styles` | штатные глобальные шрифты, размеры, насыщенность и цвета кнопок через `page_config` |
+| `tobiz_get_computed_styles`, `tobiz_screenshot_page` | реальные стили и полностраничные desktop/mobile PNG-снимки |
+| `tobiz_diagnose_interactions`, `tobiz_audit_page` | формы, попапы, кнопки, ссылки, JS-ошибки, переполнение и изображения |
 | `tobiz_add_block`, `tobiz_update_block`, `tobiz_delete_block`, `tobiz_move_block` | правки черновика |
 | `tobiz_save_page` | запись блоков на сайт: рендер HTML, SaveBlocks, проверка вёрстки |
 | `tobiz_update_page` | правка параметров страницы (SEO, название, slug, og:image) — пишет сразу |
@@ -136,9 +139,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
 | `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article` | штатный редактор статей: тексты, URL, SEO, публикация, категории |
-| `tobiz_upload_article_image`, `tobiz_list_article_categories` | изображения и категории статей |
+| `tobiz_upload_article_image`, `tobiz_sort_article_images`, `tobiz_list_article_categories` | изображения, их порядок и категории статей |
 | `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_delete_product` | управление товарами: цены, остатки, метки, размеры, SEO и видео |
-| `tobiz_upload_product_image`, `tobiz_list_product_categories` | галерея и категории товаров |
+| `tobiz_upload_product_image`, `tobiz_sort_product_images`, `tobiz_list_product_categories` | галерея, порядок фото и категории товаров |
+| `tobiz_list_product_offers`, `tobiz_get_product_offer`, `tobiz_create_product_offer`, `tobiz_update_product_offer`, `tobiz_delete_product_offer` | варианты товара: название, артикул, цена, остаток и фото |
 
 Ответ инструмента: `{"ok": true, "data": {...}}` либо
 `{"ok": false, "error": {"code": "...", "message": "...", "hint": "..."}}`.
@@ -156,7 +160,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 Статьи и товары также редактируются отдельными штатными модулями TOBIZ и применяются сразу, без
 `tobiz_save_page`. Текст статьи принимает HTML CKEditor: изображения загружаются в ее галерею,
-а видео вставляется штатным `iframe`. В товаре доступны три поля видео (`video1`-`video3`).
+а видео вставляется штатным `iframe`. В товаре доступны три поля видео (`video1`-`video3`) и
+штатные варианты (offers). Глобальные стили страницы хранятся в `page_config`: их правки попадают
+в черновик и применяются через `tobiz_save_page`, как обычные блоки.
 
 ## Полезно знать
 

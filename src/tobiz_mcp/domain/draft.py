@@ -46,6 +46,7 @@ class Draft:
     order: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     base_hash: str = ""
+    changed_meta: list[str] = field(default_factory=list)
 
     # --- работа с составом ---
 
@@ -96,11 +97,11 @@ class Draft:
 
     @property
     def has_changes(self) -> bool:
-        return any(b.changed_paths or b.origin == "created" or b.deleted
-                   for b in self.blocks.values())
+        return bool(self.changed_meta) or any(b.changed_paths or b.origin == "created" or b.deleted
+                                              for b in self.blocks.values())
 
     def change_hash(self) -> str:
-        payload = [
+        payload: Any = {"blocks": [
             {
                 "block_id": bid,
                 "type_id": b.type_id,
@@ -109,13 +110,14 @@ class Draft:
                 "values": b.values,
             }
             for bid, b in sorted(self.blocks.items())
-        ]
+        ], "page_meta": self.page_meta}
         blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
 
     def discard(self) -> None:
         self.blocks.clear()
         self.order.clear()
+        self.changed_meta.clear()
 
     def ensure_changes(self) -> None:
         if not self.has_changes:
