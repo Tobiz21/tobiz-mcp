@@ -461,6 +461,61 @@ class Service:
         }
         return combined
 
+    async def block_controls(self, project_id: str, *, type_id: str = "",
+                             category_id: str = "", query: str = "",
+                             control_type: str = "interactive", limit: int = 50,
+                             offset: int = 0) -> dict[str, Any]:
+        """Return editor switches/selects for block types and all palette variants."""
+        block_types = await self.block_types(project_id)
+        variants = await self.catalog.variants_by_type(project_id)
+        needle = query.strip().lower()
+        items: list[dict[str, Any]] = []
+        controls_total = 0
+        for block_type in block_types.values():
+            if type_id and block_type.type_id != str(type_id):
+                continue
+            type_variants = variants.get(block_type.type_id, [])
+            categories = {str(item.get("category_id") or "") for item in type_variants}
+            if category_id and str(category_id) not in categories:
+                continue
+            searchable = " ".join([
+                block_type.type_id, block_type.title, block_type.description,
+                *[str(item.get("title") or "") for item in type_variants],
+            ]).lower()
+            if needle and needle not in searchable:
+                continue
+            controls = block_domain.control_schema(block_type, control_type)
+            if not controls:
+                continue
+            controls_total += len(controls)
+            items.append({
+                "type_id": block_type.type_id,
+                "title": block_type.title,
+                "category_id": block_type.category_id,
+                "has_template": block_type.has_template,
+                "controls": controls,
+                "controls_count": len(controls),
+                "variant_count": len(type_variants),
+                "variants": type_variants,
+            })
+        items.sort(key=lambda item: (int(item["type_id"])
+                                     if str(item["type_id"]).isdigit() else 10**9,
+                                     str(item["type_id"])))
+        total = len(items)
+        start = max(0, int(offset or 0))
+        size = max(1, min(int(limit or 50), 100))
+        return {
+            "project_id": project_id,
+            "control_type": control_type,
+            "total": total,
+            "controls_total": controls_total,
+            "limit": size,
+            "offset": start,
+            "items": items[start:start + size],
+            "verification": "Use tobiz_audit_catalog(type_ids=[...]) to render both checkbox "
+                            "states and every select option without changing the site.",
+        }
+
     async def type_or_raise(self, project_id: str, type_id: str) -> BlockType:
         types = await self.block_types(project_id)
         block_type = types.get(str(type_id))

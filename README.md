@@ -126,6 +126,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_list_blocks`, `tobiz_get_block` | блоки страницы и значения полей блока |
 | `tobiz_page_info` | параметры страницы как в панели: название, URL, SEO, og:image, доступ |
 | `tobiz_search_blocks`, `tobiz_describe_block` | поиск по библиотеке блоков, схема полей типа |
+| `tobiz_block_controls` | реестр галочек и списков каждого типа: подписи, поля, дефолты, зависимости и варианты |
 | `tobiz_audit_catalog` | аудит всех типов, галочек, списков, серверных значений и flex-вариантов |
 | `tobiz_get_site_styles`, `tobiz_update_site_styles` | штатные глобальные шрифты, размеры, насыщенность и цвета кнопок через `page_config` |
 | `tobiz_get_computed_styles`, `tobiz_screenshot_page` | реальные стили и полностраничные desktop/mobile PNG-снимки |

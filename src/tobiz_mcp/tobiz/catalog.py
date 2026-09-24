@@ -139,6 +139,26 @@ class Catalog:
             )
         return data
 
+    async def variants_by_type(self, project_id: str) -> dict[str, list[dict[str, Any]]]:
+        """All palette entries grouped by type_id, including duplicate visual variants."""
+        result: dict[str, list[dict[str, Any]]] = {}
+        data = await self.catalog(project_id)
+        for section in data.get("sections", []):
+            category_id = str(section.get("category_id") or "")
+            category_name = str(section.get("name") or "")
+            for item in section.get("blocks", []):
+                type_id = str(item.get("id") or "")
+                if not type_id:
+                    continue
+                result.setdefault(type_id, []).append({
+                    "position": item.get("position"),
+                    "title": item.get("title", ""),
+                    "description": item.get("description", ""),
+                    "category_id": category_id,
+                    "category_name": category_name,
+                })
+        return result
+
     def _catalog_index(self, catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
         index: dict[str, dict[str, Any]] = {}
         for section in catalog.get("sections", []):

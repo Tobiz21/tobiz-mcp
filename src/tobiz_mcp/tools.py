@@ -31,7 +31,8 @@ READ_TOOLS = {
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
-    "tobiz_page_info", "tobiz_audit_catalog", "tobiz_list_articles", "tobiz_get_article",
+    "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
+    "tobiz_list_articles", "tobiz_get_article",
     "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
     "tobiz_list_product_categories",
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
@@ -277,6 +278,29 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["failures"] = failures[:200]
         result["failures_truncated"] = max(0, len(failures) - 200)
         return result
+
+    @tool("tobiz_block_controls",
+          "Реестр штатных галочек и списков выбора для каждого типа блока. Возвращает русскую "
+          "подпись, имя поля, значение по умолчанию, зависимости, варианты select и все "
+          "визуальные варианты блока из палитры. control_type: checkbox, select, interactive "
+          "или all. Для проверки обоих состояний используйте tobiz_audit_catalog.")
+    async def tobiz_block_controls(project_id: Id | None = None, type_id: Id = "",
+                                   category_id: Id = "", query: str = "",
+                                   control_type: str = "interactive", limit: int = 50,
+                                   offset: int = 0) -> dict[str, Any]:
+        project = await service.project(project_id)
+        allowed = {"checkbox", "select", "interactive", "all"}
+        normalized = (control_type or "interactive").strip().lower()
+        if normalized not in allowed:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, f"Неизвестный control_type: {control_type}",
+                "Допустимо: checkbox, select, interactive, all",
+            )
+        return await service.block_controls(
+            project.project_id, type_id=str(type_id or ""),
+            category_id=str(category_id or ""), query=query,
+            control_type=normalized, limit=limit, offset=offset,
+        )
 
     # --- статьи ---
 

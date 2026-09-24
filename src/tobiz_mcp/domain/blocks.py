@@ -15,6 +15,9 @@ _SELECT_TYPES = {
 _META_TYPES = {"subtitle", "devider", "instruction", "more_info"}
 _INT_TYPES = {"int", "range"}
 _IMAGE_TYPES = {"image_gallery", "image"}
+_INTERACTIVE_TYPES = {"checkbox", "select", "radio", "select_bg_repeat", "select_bg_size",
+                      "select_font_weight", "select_clip_path"}
+_DROPDOWN_TYPES = _INTERACTIVE_TYPES - {"checkbox"}
 
 
 def field_schema(block_type: Any, current: dict[str, Any] | None = None,
@@ -71,6 +74,40 @@ def field_schema(block_type: Any, current: dict[str, Any] | None = None,
         "vars": vars_info,
         "fields_count": len(fields),
     }
+
+
+def control_schema(block_type: Any, control_type: str = "interactive") -> list[dict[str, Any]]:
+    """Editor switches and selectors with labels, defaults, dependencies and option labels."""
+    requested = (control_type or "interactive").strip().lower()
+    controls: list[dict[str, Any]] = []
+    for setting in block_type.settings or []:
+        name = setting.get("name")
+        stype = setting.get("type") or "text"
+        if not name or stype in _META_TYPES:
+            continue
+        if requested == "checkbox" and stype != "checkbox":
+            continue
+        if requested == "select" and stype not in _DROPDOWN_TYPES:
+            continue
+        if requested == "interactive" and stype not in _INTERACTIVE_TYPES:
+            continue
+        entry: dict[str, Any] = {
+            "name": name,
+            "type": stype,
+            "title": setting.get("title") or name,
+            "default": block_type.values.get(name),
+        }
+        if setting.get("require"):
+            entry["require"] = setting["require"]
+        options = setting.get("vars")
+        if isinstance(options, list) and options:
+            entry["options"] = [
+                {"value": option.get("val"),
+                 "title": option.get("title") or option.get("name") or str(option.get("val", ""))}
+                for option in options if isinstance(option, dict)
+            ]
+        controls.append(entry)
+    return controls
 
 
 def unknown_fields(block_type: Any, keys: list[str]) -> list[str]:
