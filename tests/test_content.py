@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tobiz_mcp.domain.content import content_map, fingerprint, prepare
+from tobiz_mcp.domain.content import content_map, fingerprint, passport, prepare
+from tobiz_mcp.domain.audit import compact
 from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
 from tobiz_mcp.tools import register
@@ -62,6 +63,34 @@ def test_map_and_structure():
     assert candidate.blocks['3'].values['items'][0]['image'] == 'null.png'
     assert candidate.blocks['3'].values['columns'] == 4
     assert candidate.order == draft.order
+
+
+def test_passport_classifies_images_and_long_text():
+    draft = sample()
+    draft.blocks['3'].values['title'] = 'x' * 71
+    result = passport(draft)
+    title = next(x for x in result['blocks'][0]['fields'] if x['path'] == '/title')
+    image = next(x for x in result['blocks'][0]['fields'] if x['path'] == '/image')
+    assert title['role'] == 'section_title'
+    assert result['warnings'][0]['code'] == 'text_over_recommended'
+    assert image['role'] == 'catalog_image'
+
+
+def test_compact_audit_filters_map_canvas_and_surfaces_real_errors():
+    report = {'url': 'https://example.test', 'viewports': {'mobile': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [{'tag': 'canvas'}]},
+        'media': {'brokenImages': [], 'missingAlt': 2},
+        'interactions': {'broken': [
+            {'issue': 'no_action', 'classes': ['ymaps-2-1-79-copyright__logo']},
+            {'issue': 'missing_anchor', 'classes': ['btn1'], 'text': 'Go'},
+        ], 'forms': []},
+        'screenshot': 'mobile.png',
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['status'] == 'needs_fix'
+    assert result['critical'][0]['code'] == 'missing_anchor'
+    assert {x['code'] for x in result['warnings']} == {'inactive_optional_link', 'missing_alt'}
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

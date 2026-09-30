@@ -13,6 +13,7 @@ from . import errors, log
 from .domain import blocks as block_domain
 from .domain import content as content_domain
 from .domain import template as template_domain
+from .domain import audit as audit_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -30,7 +31,7 @@ Id = Annotated[
     WithJsonSchema({"type": ["string", "integer"]}),
 ]
 READ_TOOLS = {
-    "tobiz_page_content", "tobiz_prepare_template",
+    "tobiz_page_content", "tobiz_template_passport", "tobiz_prepare_template",
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
@@ -39,7 +40,7 @@ READ_TOOLS = {
     "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
     "tobiz_list_product_categories",
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
-    "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_list_product_offers",
+    "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
     "tobiz_get_product_offer",
 }
 
@@ -570,6 +571,13 @@ def register(mcp: Any, service: Service) -> list[str]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         return content_domain.content_map(await service.draft(project_id, page_id))
 
+    @tool("tobiz_template_passport", "Read content roles, image requirements and conservative "
+          "mobile text-length guidance before filling a native template.")
+    async def tobiz_template_passport(project_id: Id | None = None,
+                                      page_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return content_domain.passport(await service.draft(project_id, page_id))
+
     @tool("tobiz_prepare_template", "Preview deterministic native fixes for a copied template. "
           "With apply=true, stage them in the draft without saving. Fixes broken button anchors "
           "when a native form is available, keeps gallery labels visible, and hides empty social links.")
@@ -777,6 +785,14 @@ def register(mcp: Any, service: Service) -> list[str]:
                                viewports: list[str] | None = None) -> dict[str, Any]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         return await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
+
+    @tool("tobiz_audit_summary", "Compact desktop/mobile audit: critical errors, actionable "
+          "warnings and screenshot paths. Does not submit forms or change the site.")
+    async def tobiz_audit_summary(project_id: Id | None = None, page_id: Id = "",
+                                  viewports: list[str] | None = None) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        report = await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
+        return audit_domain.compact(report)
 
     @tool("tobiz_upload_image",
           "Загрузить изображение в конструктор. path — файл внутри /data/inbox, либо "

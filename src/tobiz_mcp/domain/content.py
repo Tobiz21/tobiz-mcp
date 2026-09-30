@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import re
+from html import unescape
 
 from ..errors import BAD_ARGUMENT, CONFLICT, TobizError
 
@@ -45,6 +46,61 @@ def content_map(draft):
                        "fields": [{"path": p, "kind": k, "value": v} for p, k, v in fields(b.values)]})
     return {"hash": fingerprint(draft), "blocks": blocks,
             "note": "Only listed string fields are editable; layout, arrays and custom code are not replaced."}
+
+
+def _plain(value):
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", value))).strip()
+
+
+def _field_profile(path, kind, block_type):
+    key = path.rsplit("/", 1)[-1]
+    if kind == "image":
+        if key == "logo_img":
+            return {"role": "logo", "image_hint": "brand artwork; preserve transparency and proportions"}
+        if key == "bg_image":
+            return {"role": "background", "image_hint": "wide image with a safe text area; usually at least 1900px"}
+        if block_type == "130":
+            return {"role": "catalog_image", "image_hint": "same aspect ratio and scale as sibling cards"}
+        if block_type == "144":
+            return {"role": "gallery_image", "image_hint": "use the block image_size ratio consistently"}
+        return {"role": "content_image", "image_hint": "match the native slot ratio and subject"}
+    if kind == "link":
+        return {"role": "link"}
+    if "/btn" in path and key == "title":
+        return {"role": "button", "recommended_max_chars": 28, "mobile_lines": "1-2"}
+    if re.fullmatch(r"title", key):
+        return {"role": "section_title", "recommended_max_chars": 70, "mobile_lines": "2-4"}
+    if re.fullmatch(r"title\d+", key):
+        return {"role": "card_title", "recommended_max_chars": 55, "mobile_lines": "1-3"}
+    if key == "sub_title":
+        return {"role": "subtitle", "recommended_max_chars": 140, "mobile_lines": "2-5"}
+    if re.fullmatch(r"(txt|descr|description)\d*", key):
+        return {"role": "body", "recommended_max_chars": 320}
+    return {"role": "text"}
+
+
+def passport(draft):
+    blocks, warnings = [], []
+    for index, bid in enumerate(draft.order):
+        block = draft.blocks[bid]
+        if block.deleted:
+            continue
+        profiled = []
+        for path, kind, value in fields(block.values):
+            profile = _field_profile(path, kind, block.type_id)
+            plain = _plain(value) if kind == "text" else value
+            item = {"path": path, "kind": kind, **profile}
+            if kind == "text":
+                item["current_chars"] = len(plain)
+            limit = profile.get("recommended_max_chars")
+            if limit and len(plain) > limit:
+                warnings.append({"block_id": bid, "path": path, "code": "text_over_recommended",
+                                 "current_chars": len(plain), "recommended_max_chars": limit})
+            profiled.append(item)
+        blocks.append({"block_index": index, "block_id": bid, "type_id": block.type_id,
+                       "fields": profiled})
+    return {"hash": fingerprint(draft), "blocks": blocks, "warnings": warnings,
+            "note": "Text limits are conservative design guidance, not TOBIZ technical limits."}
 
 
 def recipe_edits(draft, recipe):
