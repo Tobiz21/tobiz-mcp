@@ -11,6 +11,7 @@ from typing import Annotated, Any, Callable
 
 from . import errors, log
 from .domain import blocks as block_domain
+from .domain import content as content_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -28,6 +29,7 @@ Id = Annotated[
     WithJsonSchema({"type": ["string", "integer"]}),
 ]
 READ_TOOLS = {
+    "tobiz_page_content",
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
@@ -561,6 +563,37 @@ def register(mcp: Any, service: Service) -> list[str]:
                 block.changed_paths.append(path)
         return {"block_id": block.block_id, "changed_fields": changed,
                 "change_hash": draft.change_hash()}
+
+    @tool("tobiz_page_content", "Read all editable content in one call with a draft hash. Does not change layout.")
+    async def tobiz_page_content(project_id: Id | None = None, page_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return content_domain.content_map(await service.draft(project_id, page_id))
+
+    @tool("tobiz_apply_content", "Validate a whole content batch before changing the draft. Preview by default. "
+          "Use apply=true to stage; save=true additionally saves once. Requires hash from tobiz_page_content. "
+          "replacement_image replaces populated image fields with a previously uploaded native filename. "
+          "Layout and block order are preserved. Hash guards this MCP draft, not concurrent browser edits.")
+    async def tobiz_apply_content(project_id: Id | None = None, page_id: Id = "",
+                                  expected_hash: str = "", edits: list[dict[str, Any]] | None = None,
+                                  replacement_image: str | None = None, apply: bool = False,
+                                  save: bool = False) -> dict[str, Any]:
+        if service.config.read_only:
+            raise errors.read_only()
+        if not expected_hash or (save and not apply):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Hash required; save requires apply=true")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        if save and draft.has_changes:
+            raise errors.TobizError(errors.CONFLICT, "Save or discard existing draft edits before batch save")
+        candidate, changes = content_domain.prepare(draft, edits or [], replacement_image, expected_hash)
+        result = {"preview": not apply, "changes": changes, "changed_fields": len(changes),
+                  "hash": content_domain.fingerprint(candidate), "saved": False}
+        if apply and changes:
+            service.drafts.put(candidate)
+            if save:
+                result["save_result"] = await service.save_page(project_id, page_id)
+                result["saved"] = not service.config.dry_run
+        return result
 
     @tool("tobiz_delete_block",
           "Удалить блок со страницы (в черновике; на сайте — после tobiz_save_page).")

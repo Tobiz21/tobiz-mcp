@@ -137,6 +137,9 @@ class DraftStore:
     def get(self, project_id: str, page_id: str) -> Draft | None:
         return self._drafts.get((str(project_id), str(page_id)))
 
+    def put(self, draft: Draft) -> None:
+        self._drafts[(str(draft.project_id), str(draft.page_id))] = draft
+
     def create(self, project_id: str, page_id: str, page_meta: dict[str, Any]) -> Draft:
         draft = Draft(project_id=str(project_id), page_id=str(page_id), page_meta=page_meta)
         self._drafts[(draft.project_id, draft.page_id)] = draft
