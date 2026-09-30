@@ -804,6 +804,8 @@ class Service:
                         only_if_changed: bool = True,
                         expected_block_hashes: dict[str, str] | None = None,
                         include_payload: bool = False) -> dict[str, Any]:
+        started = time.perf_counter()
+        timings = {}
         if self.config.read_only:
             raise errors.read_only()
         draft = await self.draft(project_id, page_id)
@@ -824,6 +826,8 @@ class Service:
                         "Перечитайте блок и повторите правку",
                     )
 
+        timings["draft_ms"] = round((time.perf_counter() - started) * 1000)
+        phase = time.perf_counter()
         types = await self.block_types(project_id)
         items: list[dict[str, Any]] = []
         for block_id in draft.order:
@@ -841,6 +845,8 @@ class Service:
             values = {**base_values, **server_defaults, **block.values}
             items.append({"block_id": block_id, "type_id": block.type_id, "values": values})
 
+        timings["prepare_ms"] = round((time.perf_counter() - phase) * 1000)
+        phase = time.perf_counter()
         project_dir = self.catalog.project_dir(project_id) / "bundles"
         project_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -855,6 +861,7 @@ class Service:
                 # старый cache сохраняем на случай повторного сохранения без рендера
                 block.cache = html
 
+        timings["render_ms"] = round((time.perf_counter() - phase) * 1000)
         payload = payload_builder.build(draft, rendered)
         if self.config.dry_run or include_payload:
             preview = {
@@ -865,8 +872,10 @@ class Service:
             }
             if self.config.dry_run:
                 preview["dry_run"] = True
+                preview["timings_ms"] = timings
                 return preview
 
+        phase = time.perf_counter()
         envelope = await self.client.editor_ajax(
             ep.ACT_SAVE_BLOCKS, self.config.lp_base(project_id), page_id,
             data=json.dumps(payload, ensure_ascii=False))
@@ -878,6 +887,7 @@ class Service:
                 raw={"status": envelope.status, "body": envelope.raw_text[:500]},
             )
 
+        timings["save_ms"] = round((time.perf_counter() - phase) * 1000)
         change_hash = draft.change_hash()
         # счётчики считаем ДО сброса правок: иначе ответ сообщает «изменено 0 блоков»
         changed_blocks = list(draft.changed_blocks)
@@ -898,7 +908,11 @@ class Service:
             "response": envelope.message or envelope.status,
         }
         if verify:
+            phase = time.perf_counter()
             result["verify"] = await self.verify_page(project_id, page_id)
+            timings["verify_ms"] = round((time.perf_counter() - phase) * 1000)
+        timings["total_ms"] = round((time.perf_counter() - started) * 1000)
+        result["timings_ms"] = timings
         if include_payload:
             result["payload"] = payload
         return result

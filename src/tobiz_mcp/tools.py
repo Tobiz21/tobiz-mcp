@@ -576,7 +576,7 @@ def register(mcp: Any, service: Service) -> list[str]:
     async def tobiz_apply_content(project_id: Id | None = None, page_id: Id = "",
                                   expected_hash: str = "", edits: list[dict[str, Any]] | None = None,
                                   replacement_image: str | None = None, apply: bool = False,
-                                  save: bool = False) -> dict[str, Any]:
+                                  save: bool = False, recipe: dict[str, Any] | None = None) -> dict[str, Any]:
         if service.config.read_only:
             raise errors.read_only()
         if not expected_hash or (save and not apply):
@@ -585,7 +585,10 @@ def register(mcp: Any, service: Service) -> list[str]:
         draft = await service.draft(project_id, page_id)
         if save and draft.has_changes:
             raise errors.TobizError(errors.CONFLICT, "Save or discard existing draft edits before batch save")
-        candidate, changes = content_domain.prepare(draft, edits or [], replacement_image, expected_hash)
+        if recipe is not None and edits:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Use either recipe or edits")
+        batch = content_domain.recipe_edits(draft, recipe) if recipe is not None else edits or []
+        candidate, changes = content_domain.prepare(draft, batch, replacement_image, expected_hash)
         result = {"preview": not apply, "changes": changes, "changed_fields": len(changes),
                   "hash": content_domain.fingerprint(candidate), "saved": False}
         if apply and changes:

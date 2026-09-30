@@ -8,6 +8,16 @@ from tobiz_mcp.domain.content import content_map, fingerprint, prepare
 from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
 from tobiz_mcp.tools import register
+from tobiz_mcp.domain.content import recipe_edits
+
+
+def test_recipe_rebinds_ids_and_rejects_layout_mismatch():
+    draft = sample()
+    recipe = {'types': ['130'], 'slots': [{'block_index': 0, 'path': '/title', 'value': 'New'}]}
+    assert recipe_edits(draft, recipe)[0]['block_id'] == '3'
+    draft.blocks['3'].type_id = '101'
+    with pytest.raises(TobizError):
+        recipe_edits(draft, recipe)
 
 
 def sample():

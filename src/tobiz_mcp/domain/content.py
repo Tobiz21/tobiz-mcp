@@ -47,6 +47,22 @@ def content_map(draft):
             "note": "Only listed string fields are editable; layout, arrays and custom code are not replaced."}
 
 
+def recipe_edits(draft, recipe):
+    """Bind positional content slots to a copy with different native block IDs."""
+    active = [draft.blocks[bid] for bid in draft.order if not draft.blocks[bid].deleted]
+    if not isinstance(recipe, dict) or recipe.get('types') != [b.type_id for b in active]:
+        raise TobizError(CONFLICT, 'Template block sequence differs; no edits applied')
+    edits = []
+    for slot in recipe.get('slots', []):
+        if not isinstance(slot, dict) or type(slot.get('block_index')) is not int:
+            raise TobizError(BAD_ARGUMENT, 'Slot requires integer block_index')
+        index = slot['block_index']
+        if not 0 <= index < len(active):
+            raise TobizError(BAD_ARGUMENT, 'Slot index outside template')
+        edits.append({'block_id': active[index].block_id, 'path': slot.get('path'), 'value': slot.get('value')})
+    return edits
+
+
 def prepare(draft, edits, image=None, expected_hash=None):
     if expected_hash and expected_hash != fingerprint(draft):
         raise TobizError(CONFLICT, "Content changed; read tobiz_page_content again")
