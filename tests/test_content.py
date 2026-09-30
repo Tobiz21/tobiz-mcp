@@ -9,6 +9,7 @@ from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
 from tobiz_mcp.tools import register
 from tobiz_mcp.domain.content import recipe_edits
+from tobiz_mcp.domain.template import prepare_template
 
 
 def test_recipe_rebinds_ids_and_rejects_layout_mismatch():
@@ -18,6 +19,31 @@ def test_recipe_rebinds_ids_and_rejects_layout_mismatch():
     draft.blocks['3'].type_id = '101'
     with pytest.raises(TobizError):
         recipe_edits(draft, recipe)
+
+
+def test_template_preparation_is_native_and_atomic():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '1154', {
+            'anchor': 'cover', 'form1': [{'type': 'text'}],
+            'btn1': {'link': '#old', 'use_form': '0'},
+        }),
+        '2': DraftBlock('2', '144', {
+            'anchor': 'gallery', 'active_off': 0, 'fix_txt_img': 0,
+            'arr1': [{'image_box': {'title': 'Step', 'descr': ''}}],
+        }),
+        '3': DraftBlock('3', '165', {
+            'show_vk': 1, 'link_vk': '', 'text': 'Название товара',
+        }),
+    }, order=['1', '2', '3'])
+    before = copy.deepcopy(draft)
+    candidate, changes, warnings = prepare_template(draft, fingerprint(draft))
+    assert draft == before
+    assert candidate.blocks['1'].values['btn1'] == {'link': '', 'use_form': '1'}
+    assert candidate.blocks['2'].values['fix_txt_img'] == 1
+    assert candidate.blocks['2'].values['active_off'] == 1
+    assert candidate.blocks['3'].values['show_vk'] == 0
+    assert len(changes) == 5
+    assert warnings[0]['code'] == 'demo_content'
 
 
 def sample():

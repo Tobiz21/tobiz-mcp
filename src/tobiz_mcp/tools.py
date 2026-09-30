@@ -12,6 +12,7 @@ from typing import Annotated, Any, Callable
 from . import errors, log
 from .domain import blocks as block_domain
 from .domain import content as content_domain
+from .domain import template as template_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -29,7 +30,7 @@ Id = Annotated[
     WithJsonSchema({"type": ["string", "integer"]}),
 ]
 READ_TOOLS = {
-    "tobiz_page_content",
+    "tobiz_page_content", "tobiz_prepare_template",
     "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
@@ -569,6 +570,23 @@ def register(mcp: Any, service: Service) -> list[str]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         return content_domain.content_map(await service.draft(project_id, page_id))
 
+    @tool("tobiz_prepare_template", "Preview deterministic native fixes for a copied template. "
+          "With apply=true, stage them in the draft without saving. Fixes broken button anchors "
+          "when a native form is available, keeps gallery labels visible, and hides empty social links.")
+    async def tobiz_prepare_template(project_id: Id | None = None, page_id: Id = "",
+                                     expected_hash: str = "", apply: bool = False) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        if not expected_hash:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Hash required")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        candidate, changes, warnings = template_domain.prepare_template(draft, expected_hash)
+        if apply and changes:
+            service.drafts.put(candidate)
+        return {"preview": not apply, "changes": changes, "warnings": warnings,
+                "hash": content_domain.fingerprint(candidate)}
+
     @tool("tobiz_apply_content", "Validate a whole content batch before changing the draft. Preview by default. "
           "Use apply=true to stage; save=true additionally saves once. Requires hash from tobiz_page_content. "
           "replacement_image replaces populated image fields with a previously uploaded native filename. "
@@ -576,7 +594,8 @@ def register(mcp: Any, service: Service) -> list[str]:
     async def tobiz_apply_content(project_id: Id | None = None, page_id: Id = "",
                                   expected_hash: str = "", edits: list[dict[str, Any]] | None = None,
                                   replacement_image: str | None = None, apply: bool = False,
-                                  save: bool = False, recipe: dict[str, Any] | None = None) -> dict[str, Any]:
+                                  save: bool = False, recipe: dict[str, Any] | None = None,
+                                  prepare_template: bool = False) -> dict[str, Any]:
         if service.config.read_only:
             raise errors.read_only()
         if not expected_hash or (save and not apply):
@@ -587,11 +606,17 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.CONFLICT, "Save or discard existing draft edits before batch save")
         if recipe is not None and edits:
             raise errors.TobizError(errors.BAD_ARGUMENT, "Use either recipe or edits")
-        batch = content_domain.recipe_edits(draft, recipe) if recipe is not None else edits or []
-        candidate, changes = content_domain.prepare(draft, batch, replacement_image, expected_hash)
+        prepared, template_changes, warnings = (
+            template_domain.prepare_template(draft, expected_hash)
+            if prepare_template else (draft, [], [])
+        )
+        batch = content_domain.recipe_edits(prepared, recipe) if recipe is not None else edits or []
+        candidate, changes = content_domain.prepare(
+            prepared, batch, replacement_image, None if prepare_template else expected_hash)
         result = {"preview": not apply, "changes": changes, "changed_fields": len(changes),
+                  "template_changes": template_changes, "warnings": warnings,
                   "hash": content_domain.fingerprint(candidate), "saved": False}
-        if apply and changes:
+        if apply and (changes or template_changes):
             service.drafts.put(candidate)
             if save:
                 result["save_result"] = await service.save_page(project_id, page_id)
