@@ -44,6 +44,9 @@ def compact(report):
         if (data.get("layout") or {}).get("textContrast"):
             critical.append({"viewport": name, "code": "text_contrast",
                              "items": (data.get("layout") or {})["textContrast"]})
+        if (data.get("layout") or {}).get("buttonSurfaceContrast"):
+            critical.append({"viewport": name, "code": "button_surface_contrast",
+                             "items": (data.get("layout") or {})["buttonSurfaceContrast"]})
         for issue in (data.get("layout") or {}).get("blockIssues") or []:
             critical.append({"viewport": name, "code": issue.get("code", "block_geometry"),
                              "item": issue})

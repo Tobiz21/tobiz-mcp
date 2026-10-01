@@ -159,6 +159,21 @@ def test_compact_audit_blocks_source_terms_and_text_contrast():
         'source_content_leftover', 'text_contrast'}
 
 
+def test_compact_audit_blocks_button_matching_section_surface():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': [],
+                   'buttonSurfaceContrast': [
+                       {'tag': 'button', 'text': 'Send', 'ratio': 1.08}]},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['verdict'] == 'save_blocked'
+    assert result['critical'][0]['code'] == 'button_surface_contrast'
+
+
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
 def test_invalid_batch_is_atomic(path):
     draft = sample()

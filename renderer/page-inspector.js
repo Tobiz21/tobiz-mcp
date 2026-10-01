@@ -99,6 +99,16 @@ async function inspect(page, forbiddenTerms = []) {
         const ratio = contrast(fg, bg); const large = parseFloat(s.fontSize) >= 24 || (parseFloat(s.fontSize) >= 18.66 && Number(s.fontWeight) >= 700);
         return ratio < (large ? 3 : 4.5) ? { ...ref(el), ratio: Number(ratio.toFixed(2)), color: s.color, background: bg.slice(0,3) } : null;
       }).filter(Boolean).slice(0, 100);
+    const buttonSurfaceContrast = [...document.querySelectorAll('a.btn1,a.btn2,a.btn3,a.btn4,a.btn5,button,input[type=submit],input[type=button]')]
+      .filter(visible).map(el => {
+        const s = getComputedStyle(el); const fill = rgb(s.backgroundColor); const surface = background(el.parentElement);
+        if (!fill || fill[3] < .75 || !surface) return null;
+        const ratio = contrast(fill, surface);
+        const border = rgb(s.borderColor); const borderWidth = parseFloat(s.borderWidth) || 0;
+        const outlined = borderWidth >= 1 && border && border[3] >= .75 && contrast(border, surface) >= 2;
+        return ratio < 1.5 && !outlined ? { ...ref(el), ratio: Number(ratio.toFixed(2)),
+          background: fill.slice(0,3), surface: surface.slice(0,3) } : null;
+      }).filter(Boolean).slice(0, 100);
     const blockIssues = [];
     for (const block of [...document.querySelectorAll('[id^="b_"]')].filter(visible)) {
       const inner = block.querySelector(':scope > .section_inner');
@@ -127,7 +137,7 @@ async function inspect(page, forbiddenTerms = []) {
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
       interactions: { controls: links.length, broken: badButtons, forms, popups },
-      layout: { horizontalOverflow: overflow, blockIssues, textContrast },
+      layout: { horizontalOverflow: overflow, blockIssues, textContrast, buttonSurfaceContrast },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref), termMatches },
     };
