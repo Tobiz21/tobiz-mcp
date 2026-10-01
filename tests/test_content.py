@@ -72,6 +72,17 @@ def test_map_and_structure():
     assert candidate.order == draft.order
 
 
+def test_map_includes_native_nested_subtitles_and_form_copy():
+    draft = sample()
+    draft.blocks['3'].values.update({
+        'arr1': [{'subtitle1': '<p>Body</p>', 'subtitle2': '<p>Second</p>'}],
+        'form_title': '<strong>Contact</strong>',
+        'form_text': 'Consent copy',
+    })
+    paths = {field['path'] for field in content_map(draft)['blocks'][0]['fields']}
+    assert {'/arr1/0/subtitle1', '/arr1/0/subtitle2', '/form_title', '/form_text'} <= paths
+
+
 def test_passport_classifies_images_and_long_text():
     draft = sample()
     draft.blocks['3'].values['title'] = 'x' * 71

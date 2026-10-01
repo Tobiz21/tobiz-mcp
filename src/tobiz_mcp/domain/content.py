@@ -7,7 +7,7 @@ from html import unescape
 
 from ..errors import BAD_ARGUMENT, CONFLICT, TobizError
 
-TEXT = re.compile(r"^(title\d*|sub_title|text\d*|txt\d*|descr\d*|description|price\d*|phone\d*|address\d*|logo_text|alt\d*|placeholder|popup_form_title|popup_thanks_title|popup_thanks_text)$")
+TEXT = re.compile(r"^(title\d*|sub_title|subtitle\d*|text\d*|txt\d*|descr\d*|description|price\d*|phone\d*|address\d*|logo_text|alt\d*|placeholder|popup_form_title|popup_thanks_title|popup_thanks_text|form_title|form_text)$")
 IMAGE = re.compile(r"^(image\d*(?:_\d+)?|bg_image|logo_img)$")
 LINK = re.compile(r"^(link\d*|logo_url|link_(?:vk|tg|youtube|rutube|whatsup|vimeo|zen|max))$")
 
@@ -72,7 +72,7 @@ def _field_profile(path, kind, block_type):
         return {"role": "section_title", "recommended_max_chars": 70, "mobile_lines": "2-4"}
     if re.fullmatch(r"title\d+", key):
         return {"role": "card_title", "recommended_max_chars": 55, "mobile_lines": "1-3"}
-    if key == "sub_title":
+    if key == "sub_title" or re.fullmatch(r"subtitle\d*", key):
         return {"role": "subtitle", "recommended_max_chars": 140, "mobile_lines": "2-5"}
     if re.fullmatch(r"(txt|descr|description)\d*", key):
         return {"role": "body", "recommended_max_chars": 320}
