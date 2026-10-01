@@ -97,12 +97,14 @@ class RenderBridge:
 
     async def inspect_page(self, url: str, output_dir: Path, *,
                            viewports: list[str] | None = None,
-                           screenshot: bool = True) -> dict[str, Any]:
+                           screenshot: bool = True,
+                           forbidden_terms: list[str] | None = None) -> dict[str, Any]:
         if not self.inspector_script.exists() or shutil.which(self.config.node_bin) is None:
             raise errors.TobizError(errors.RENDER_FAILED, "Браузерный инспектор недоступен")
         payload = json.dumps({
             "url": url, "output_dir": str(output_dir), "viewports": viewports or ["desktop", "mobile"],
             "screenshot": screenshot, "timeout_ms": self.config.http_timeout * 1000,
+            "forbidden_terms": forbidden_terms or [],
         }, ensure_ascii=False)
         process = await asyncio.create_subprocess_exec(
             self.config.node_bin, str(self.inspector_script), stdin=asyncio.subprocess.PIPE,

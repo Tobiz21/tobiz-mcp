@@ -130,11 +130,12 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_audit_catalog` | аудит всех типов, галочек, списков, серверных значений и flex-вариантов |
 | `tobiz_get_site_styles`, `tobiz_update_site_styles` | штатные глобальные шрифты, размеры, насыщенность и цвета кнопок через `page_config` |
 | `tobiz_get_computed_styles`, `tobiz_screenshot_page` | реальные стили и полностраничные desktop/mobile PNG-снимки |
-| `tobiz_diagnose_interactions`, `tobiz_audit_page` | формы, попапы, кнопки, ссылки, JS-ошибки, переполнение и изображения |
+| `tobiz_diagnose_interactions`, `tobiz_audit_page`, `tobiz_audit_summary` | формы, попапы, кнопки, ссылки, контраст, геометрия, остатки исходной тематики, JS-ошибки и изображения |
 | `tobiz_add_block`, `tobiz_update_block`, `tobiz_delete_block`, `tobiz_move_block` | правки черновика |
 | `tobiz_save_page` | запись блоков на сайт: рендер HTML, SaveBlocks, проверка вёрстки |
 | `tobiz_update_page` | правка параметров страницы (SEO, название, slug, og:image) — пишет сразу |
 | `tobiz_copy_page` | копия страницы вместе с блоками в тот же или другой проект |
+| `tobiz_build_from_template` | один конвейер: проверка рецепта, копирование, заполнение, одно сохранение, SEO и desktop/mobile-аудит |
 | `tobiz_delete_page` | удаление страницы (требует `confirm=true`) |
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
 | `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле |

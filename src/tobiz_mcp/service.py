@@ -372,12 +372,14 @@ class Service:
         return {"pages": changed_pages, "pending_save": bool(changed_pages)}
 
     async def inspect_page(self, project_id: str, page_id: str, *, screenshot: bool = True,
-                           viewports: list[str] | None = None) -> dict[str, Any]:
+                           viewports: list[str] | None = None,
+                           forbidden_terms: list[str] | None = None) -> dict[str, Any]:
         await self.resolve_page(project_id, page_id)
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         output = Path(self.config.audit_dir) / "screenshots" / str(project_id) / str(page_id) / stamp
         return await self.bridge.inspect_page(self.config.public_url(project_id, page_id), output,
-                                              viewports=viewports, screenshot=screenshot)
+                                              viewports=viewports, screenshot=screenshot,
+                                              forbidden_terms=forbidden_terms)
 
     async def audit_catalog(self, project_id: str,
                             type_ids: list[str] | None = None) -> dict[str, Any]:

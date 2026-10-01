@@ -26,8 +26,8 @@ const VIEWPORTS = {
   mobile: { width: 390, height: 844 },
 };
 
-async function inspect(page) {
-  return page.evaluate(() => {
+async function inspect(page, forbiddenTerms = []) {
+  return page.evaluate((forbiddenTerms) => {
     const visible = el => {
       const s = getComputedStyle(el); const r = el.getBoundingClientRect();
       return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0 && r.width > 1 && r.height > 1;
@@ -39,6 +39,28 @@ async function inspect(page) {
       lineHeight: s.lineHeight, color: s.color, backgroundColor: s.backgroundColor,
       textAlign: s.textAlign, padding: s.padding, margin: s.margin, borderRadius: s.borderRadius,
     }; };
+    const rgb = value => {
+      const match = String(value || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/i);
+      return match ? [Number(match[1]), Number(match[2]), Number(match[3]), match[4] === undefined ? 1 : Number(match[4])] : null;
+    };
+    const luminance = color => {
+      const channels = color.slice(0, 3).map(value => { const x = value / 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; });
+      return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2];
+    };
+    const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+    const background = el => {
+      for (let node = el; node; node = node.parentElement) {
+        const color = rgb(getComputedStyle(node).backgroundColor);
+        if (color && color[3] >= .75) return color;
+        const overlay = node.matches?.('[id^="b_"]') ? node.querySelector(':scope > .back_dark') : null;
+        if (overlay && visible(overlay)) {
+          const raw = `${overlay.style.background} ${getComputedStyle(overlay).backgroundImage}`;
+          const hex = raw.match(/#([0-9a-f]{6})/i);
+          if (hex) return [parseInt(hex[1].slice(0,2),16), parseInt(hex[1].slice(2,4),16), parseInt(hex[1].slice(4,6),16), 1];
+        }
+      }
+      return [255, 255, 255, 1];
+    };
     const sample = selector => { const el = [...document.querySelectorAll(selector)].find(visible); return el ? { ...ref(el), style: style(el) } : null; };
     const links = [...document.querySelectorAll('a, button, input[type=submit], input[type=button]')].filter(visible);
     const badButtons = links.map(el => {
@@ -69,6 +91,34 @@ async function inspect(page) {
     const overflow = allVisible.filter(el => { const r = el.getBoundingClientRect(); return r.right > innerWidth + 2 || r.left < -2; }).slice(0, 100).map(ref);
     const images = [...document.images].map(img => ({ src: img.currentSrc || img.src, alt: img.alt || '', complete: img.complete,
       naturalWidth: img.naturalWidth, visible: visible(img) }));
+    const textContrast = [...document.querySelectorAll('h1,h2,h3,h4,p,.form_title,.form_text,.field_title')]
+      .filter(el => visible(el) && [...el.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()))
+      .map(el => {
+        const s = getComputedStyle(el); const fg = rgb(s.color); const bg = background(el);
+        if (!fg || !bg) return null;
+        const ratio = contrast(fg, bg); const large = parseFloat(s.fontSize) >= 24 || (parseFloat(s.fontSize) >= 18.66 && Number(s.fontWeight) >= 700);
+        return ratio < (large ? 3 : 4.5) ? { ...ref(el), ratio: Number(ratio.toFixed(2)), color: s.color, background: bg.slice(0,3) } : null;
+      }).filter(Boolean).slice(0, 100);
+    const blockIssues = [];
+    for (const block of [...document.querySelectorAll('[id^="b_"]')].filter(visible)) {
+      const inner = block.querySelector(':scope > .section_inner');
+      if (!inner) continue;
+      const rect = inner.getBoundingClientRect();
+      const children = [...inner.children].filter(visible).map(el => ({ el, rect: el.getBoundingClientRect() }));
+      for (const item of children) {
+        if (item.rect.left < rect.left - 3 || item.rect.right > rect.right + 3) blockIssues.push({ block: block.id, code: 'child_outside_container', child: ref(item.el) });
+      }
+      if (innerWidth >= 1100) {
+        const footerCols = children.filter(item => ['logo','address-and-ua','phone-and-address'].some(name => item.el.classList.contains(name)));
+        if (footerCols.length === 3 && Math.max(...footerCols.map(x => x.rect.top)) - Math.min(...footerCols.map(x => x.rect.top)) > 80) blockIssues.push({ block: block.id, code: 'footer_columns_stacked_desktop' });
+      }
+    }
+    const bodyText = document.body.innerText.replace(/\s+/g, ' ');
+    const termMatches = (forbiddenTerms || []).filter(term => typeof term === 'string' && term.trim()).map(term => {
+      const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matches = bodyText.match(new RegExp(escaped, 'giu')) || [];
+      return matches.length ? { term, count: matches.length } : null;
+    }).filter(Boolean);
     return {
       title: document.title, url: location.href,
       document: { scrollWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
@@ -77,11 +127,11 @@ async function inspect(page) {
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
       interactions: { controls: links.length, broken: badButtons, forms, popups },
-      layout: { horizontalOverflow: overflow },
+      layout: { horizontalOverflow: overflow, blockIssues, textContrast },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
-      content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref) },
+      content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref), termMatches },
     };
-  });
+  }, forbiddenTerms);
 }
 
 (async () => {
@@ -99,8 +149,10 @@ async function inspect(page) {
       const page = await context.newPage();
       page.on('console', msg => { if (msg.type() === 'error') result.consoleErrors.push({ viewport: name, text: msg.text().slice(0, 500) }); });
       page.on('pageerror', error => result.pageErrors.push({ viewport: name, text: String(error).slice(0, 500) }));
-      await page.goto(request.url, { waitUntil: 'networkidle', timeout: request.timeout_ms || 45000 });
-      const report = await inspect(page);
+      await page.goto(request.url, { waitUntil: 'domcontentloaded', timeout: request.timeout_ms || 45000 });
+      await page.waitForLoadState('load', { timeout: Math.min(request.timeout_ms || 45000, 15000) }).catch(() => {});
+      await page.evaluate(() => document.fonts?.ready).catch(() => {});
+      const report = await inspect(page, request.forbidden_terms || []);
       if (request.screenshot) {
         const file = path.join(request.output_dir, `${name}.png`);
         await page.screenshot({ path: file, fullPage: true });

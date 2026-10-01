@@ -621,6 +621,10 @@ def register(mcp: Any, service: Service) -> list[str]:
         batch = content_domain.recipe_edits(prepared, recipe) if recipe is not None else edits or []
         candidate, changes = content_domain.prepare(
             prepared, batch, replacement_image, None if prepare_template else expected_hash)
+        if prepare_template:
+            candidate, post_changes, post_warnings = template_domain.prepare_template(candidate)
+            template_changes += post_changes
+            warnings += post_warnings
         result = {"preview": not apply, "changes": changes, "changed_fields": len(changes),
                   "template_changes": template_changes, "warnings": warnings,
                   "hash": content_domain.fingerprint(candidate), "saved": False}
@@ -712,6 +716,80 @@ def register(mcp: Any, service: Service) -> list[str]:
         return await service.copy_page(project_id, page_id, title or None,
                                        target_project or None, apply=apply)
 
+    @tool("tobiz_build_from_template", "One-command native template pipeline: preview or copy a page, "
+          "rebind a positional content recipe, prepare native settings, replace populated images, "
+          "save once, apply SEO and run desktop/mobile quality audit. No custom HTML/CSS/JS is added.")
+    async def tobiz_build_from_template(source_project_id: Id = "", source_page_id: Id = "",
+                                        target_project_id: Id = "", title: str = "",
+                                        recipe: dict[str, Any] | None = None,
+                                        replacement_image: str | None = None,
+                                        source_terms: list[str] | None = None,
+                                        seo: dict[str, Any] | None = None,
+                                        apply: bool = False,
+                                        viewports: list[str] | None = None) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        allowed_seo = {"title", "dir", "seo_title", "seo_description", "seo_keywords",
+                       "og_image", "personal_seo_configs", "access_control"}
+        seo_values = seo or {}
+        unknown_seo = sorted(set(seo_values) - allowed_seo)
+        if unknown_seo:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Неизвестные SEO-поля: " + ", ".join(unknown_seo))
+        source_project_id, source_page = await service.resolve_page(source_project_id, source_page_id)
+        source_draft = await service.draft(source_project_id, source_page_id)
+        prepared_source, template_changes, template_warnings = template_domain.prepare_template(
+            source_draft, content_domain.fingerprint(source_draft))
+        batch = content_domain.recipe_edits(prepared_source, recipe or {
+            "types": [prepared_source.blocks[bid].type_id for bid in prepared_source.order
+                      if not prepared_source.blocks[bid].deleted], "slots": []})
+        candidate, content_changes = content_domain.prepare(
+            prepared_source, batch, replacement_image)
+        candidate, final_template_changes, final_warnings = template_domain.prepare_template(candidate)
+        plan = {
+            "source_page_id": source_page_id,
+            "source_title": source_page.title,
+            "target_project_id": target_project_id or source_project_id,
+            "title": title or f"Копия {source_page.title}",
+            "block_types": [candidate.blocks[bid].type_id for bid in candidate.order
+                            if not candidate.blocks[bid].deleted],
+            "content_changes": len(content_changes),
+            "template_changes": len(template_changes) + len(final_template_changes),
+            "warnings": template_warnings + final_warnings,
+        }
+        if not apply:
+            return {"preview": True, "plan": plan, "passport": content_domain.passport(candidate)}
+
+        copied = await service.copy_page(source_project_id, source_page_id, plan["title"],
+                                         target_project_id or source_project_id, apply=True)
+        created = copied.get("created") or []
+        if len(created) != 1 or not created[0].get("page_id"):
+            raise errors.TobizError(errors.SAVE_FAILED,
+                                    "Не удалось однозначно определить созданную страницу")
+        target_page_id = str(created[0]["page_id"])
+        target_project = str(copied["new_project"])
+        target_draft = await service.draft(target_project, target_page_id, refresh=True)
+        prepared, first_changes, first_warnings = template_domain.prepare_template(
+            target_draft, content_domain.fingerprint(target_draft))
+        target_batch = content_domain.recipe_edits(prepared, recipe or {
+            "types": [prepared.blocks[bid].type_id for bid in prepared.order
+                      if not prepared.blocks[bid].deleted], "slots": []})
+        built, changed = content_domain.prepare(prepared, target_batch, replacement_image)
+        built, last_changes, last_warnings = template_domain.prepare_template(built)
+        service.drafts.put(built)
+        save_result = await service.save_page(target_project, target_page_id)
+
+        seo_result = await service.update_page(target_project, target_page_id, **seo_values) if seo_values else None
+        report = await service.inspect_page(target_project, target_page_id, screenshot=True,
+                                            viewports=viewports,
+                                            forbidden_terms=source_terms)
+        summary = audit_domain.compact(report)
+        return {"preview": False, "page": created[0], "plan": plan,
+                "changed_fields": len(changed),
+                "template_changes": first_changes + last_changes,
+                "warnings": first_warnings + last_warnings,
+                "save": save_result, "seo": seo_result, "audit": summary}
+
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "
           "с названием страницы — сначала проверьте, ту ли удаляете (tobiz_list_pages).")
@@ -789,9 +867,11 @@ def register(mcp: Any, service: Service) -> list[str]:
     @tool("tobiz_audit_summary", "Compact desktop/mobile audit: critical errors, actionable "
           "warnings and screenshot paths. Does not submit forms or change the site.")
     async def tobiz_audit_summary(project_id: Id | None = None, page_id: Id = "",
-                                  viewports: list[str] | None = None) -> dict[str, Any]:
+                                  viewports: list[str] | None = None,
+                                  source_terms: list[str] | None = None) -> dict[str, Any]:
         project_id, _ = await service.resolve_page(project_id, page_id)
-        report = await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
+        report = await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports,
+                                            forbidden_terms=source_terms)
         return audit_domain.compact(report)
 
     @tool("tobiz_upload_image",

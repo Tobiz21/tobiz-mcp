@@ -10,6 +10,7 @@ def compact(report):
             if item.get("tag") != "canvas"
         ]
         media = data.get("media") or {}
+        content = data.get("content") or {}
         interactions = data.get("interactions") or {}
         broken = []
         for item in interactions.get("broken") or []:
@@ -37,6 +38,15 @@ def compact(report):
         if media.get("brokenImages"):
             critical.append({"viewport": name, "code": "broken_images",
                              "items": media["brokenImages"]})
+        if content.get("termMatches"):
+            critical.append({"viewport": name, "code": "source_content_leftover",
+                             "items": content["termMatches"]})
+        if (data.get("layout") or {}).get("textContrast"):
+            critical.append({"viewport": name, "code": "text_contrast",
+                             "items": (data.get("layout") or {})["textContrast"]})
+        for issue in (data.get("layout") or {}).get("blockIssues") or []:
+            critical.append({"viewport": name, "code": issue.get("code", "block_geometry"),
+                             "item": issue})
         for item in broken:
             critical.append({"viewport": name, "code": item.get("issue", "broken_interaction"),
                              "item": item})
@@ -54,5 +64,7 @@ def compact(report):
         warnings.append({"code": "console_errors", "count": len(report["consoleErrors"])})
     if report.get("pageErrors"):
         critical.append({"code": "page_errors", "items": report["pageErrors"]})
-    return {"status": "pass" if not critical else "needs_fix", "url": report.get("url"),
+    verdict = "save_blocked" if critical else "review" if warnings else "ready"
+    return {"status": "pass" if not critical else "needs_fix", "verdict": verdict,
+            "url": report.get("url"),
             "critical": critical, "warnings": warnings, "viewports": viewports}

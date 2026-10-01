@@ -127,6 +127,21 @@ def test_compact_audit_ignores_hidden_fields_and_closed_mobile_menu():
     assert result['viewports']['mobile']['form_issues'] == 0
 
 
+def test_compact_audit_blocks_source_terms_and_text_contrast():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [],
+                   'textContrast': [{'tag': 'div', 'text': 'Hidden', 'ratio': 1.2}]},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': [{'term': 'пеноблок', 'count': 2}]},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['verdict'] == 'save_blocked'
+    assert {item['code'] for item in result['critical']} == {
+        'source_content_leftover', 'text_contrast'}
+
+
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
 def test_invalid_batch_is_atomic(path):
     draft = sample()
@@ -173,3 +188,43 @@ async def test_preview_then_one_save():
     assert result['ok'] and result['data']['saved']
     assert store.get('1', '2').blocks['3'].values['title'] == 'New'
     service.save_page.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_build_from_template_previews_then_runs_one_save_and_audit():
+    source = sample()
+    target = copy.deepcopy(source)
+    target.project_id, target.page_id = '9', '10'
+    store = DraftStore()
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False, dry_run=False), drafts=store,
+        resolve_page=AsyncMock(side_effect=lambda project, page: (
+            (str(project), SimpleNamespace(title='Template')))),
+        draft=AsyncMock(side_effect=lambda project, page, refresh=False: source if str(page) == '2' else target),
+        copy_page=AsyncMock(return_value={'new_project': '9', 'created': [{'page_id': '10', 'url': 'https://x'}]}),
+        save_page=AsyncMock(return_value={'saved': True}),
+        update_page=AsyncMock(return_value={'applied': {}}),
+        inspect_page=AsyncMock(return_value={'url': 'https://x', 'viewports': {}, 'consoleErrors': [], 'pageErrors': []}),
+    )
+    functions = {}
+    class MCP:
+        def tool(self, name, description):
+            def capture(fn):
+                functions[name] = fn
+                return fn
+            return capture
+    register(MCP(), service)
+    recipe = {'types': ['130'], 'slots': [{'block_index': 0, 'path': '/title', 'value': 'Built'}]}
+    preview = await functions['tobiz_build_from_template'](
+        source_project_id='1', source_page_id='2', target_project_id='9',
+        title='New site', recipe=recipe, replacement_image='gray.png')
+    assert preview['ok'] and preview['data']['preview']
+    service.copy_page.assert_not_awaited()
+    result = await functions['tobiz_build_from_template'](
+        source_project_id='1', source_page_id='2', target_project_id='9',
+        title='New site', recipe=recipe, replacement_image='gray.png',
+        source_terms=['old topic'], seo={'dir': 'new-site'}, apply=True)
+    assert result['ok'] and result['data']['audit']['verdict'] == 'ready'
+    service.copy_page.assert_awaited_once()
+    service.save_page.assert_awaited_once()
+    service.inspect_page.assert_awaited_once()
