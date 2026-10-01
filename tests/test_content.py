@@ -111,6 +111,23 @@ def test_compact_audit_filters_map_canvas_and_surfaces_real_errors():
     assert {x['code'] for x in result['warnings']} == {'inactive_optional_link', 'missing_alt'}
 
 
+def test_compact_audit_keeps_native_only_advisories_ready():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 6},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [
+            {'issue': 'no_action', 'classes': ['ymaps-2-1-79-copyright__logo']},
+        ], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['status'] == 'pass'
+    assert result['verdict'] == 'ready'
+    assert {item['code'] for item in result['warnings']} == {
+        'inactive_optional_link', 'missing_alt'}
+
+
 def test_compact_audit_ignores_hidden_fields_and_closed_mobile_menu():
     report = {'url': 'https://example.test', 'viewports': {'mobile': {
         'document': {'overflowX': False},

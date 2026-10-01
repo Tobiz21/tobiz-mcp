@@ -64,7 +64,9 @@ def compact(report):
         warnings.append({"code": "console_errors", "count": len(report["consoleErrors"])})
     if report.get("pageErrors"):
         critical.append({"code": "page_errors", "items": report["pageErrors"]})
-    verdict = "save_blocked" if critical else "review" if warnings else "ready"
+    advisory_codes = {"missing_alt", "inactive_optional_link"}
+    actionable_warnings = [item for item in warnings if item.get("code") not in advisory_codes]
+    verdict = "save_blocked" if critical else "review" if actionable_warnings else "ready"
     return {"status": "pass" if not critical else "needs_fix", "verdict": verdict,
             "url": report.get("url"),
             "critical": critical, "warnings": warnings, "viewports": viewports}
