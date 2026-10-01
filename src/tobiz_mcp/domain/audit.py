@@ -22,12 +22,17 @@ def compact(report):
                 broken.append(item)
         form_issues = []
         for form in interactions.get("forms") or []:
-            if form.get("issues"):
+            issues = [
+                issue for issue in (form.get("issues") or [])
+                if not (issue.get("tag") == "input"
+                        and set(issue.get("issues") or []) == {"not_visible"})
+            ]
+            if issues:
                 target = critical if form.get("visible") else warnings
                 target.append({"viewport": name, "code": "form_contrast",
-                               "visible": bool(form.get("visible")), "issues": form["issues"]})
-                form_issues.extend(form["issues"])
-        if document.get("overflowX") or overflow:
+                               "visible": bool(form.get("visible")), "issues": issues})
+                form_issues.extend(issues)
+        if document.get("overflowX"):
             critical.append({"viewport": name, "code": "horizontal_overflow", "items": overflow})
         if media.get("brokenImages"):
             critical.append({"viewport": name, "code": "broken_images",

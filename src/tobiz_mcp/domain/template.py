@@ -15,6 +15,7 @@ DEMO = re.compile(
     r"Замеры с ювелирной точностью|\+7\s*800\s*333\s*22\s*33",
     re.I,
 )
+DEMO_LINK = re.compile(r"^https?://(?:www\.)?tobiz\.net(?:/|$)", re.I)
 
 
 def _set(block, path, value, changes, reason):
@@ -61,8 +62,20 @@ def prepare_template(draft, expected_hash=None):
 
         for social, link_key in SOCIALS.items():
             show_key = f"show_{social}"
-            if values.get(show_key) in (1, "1", True) and not str(values.get(link_key, "")).strip():
-                _set(block, f"/{show_key}", 0, changes, "hide_empty_social")
+            link = str(values.get(link_key, "")).strip()
+            if values.get(show_key) in (1, "1", True) and (not link or DEMO_LINK.match(link)):
+                reason = "hide_demo_social" if link else "hide_empty_social"
+                _set(block, f"/{show_key}", 0, changes, reason)
+
+        form_title = str(values.get("form_title", ""))
+        if (values.get("show_form_title") in (1, "1", True)
+                and values.get("back_dark") in (1, "1", True)
+                and form_title
+                and not re.search(r"color\s*:\s*(?:#fff(?:fff)?|white)\b", form_title, re.I)):
+            cleaned = re.sub(r"color\s*:\s*(?:#000(?:000)?|black)\s*;?", "", form_title,
+                             flags=re.I)
+            _set(block, "/form_title", f'<span style="color:#ffffff">{cleaned}</span>',
+                 changes, "keep_form_title_visible_on_dark_background")
 
         if block.type_id == "144" and values.get("arr1"):
             has_labels = any(

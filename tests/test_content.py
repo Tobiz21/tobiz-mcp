@@ -33,9 +33,14 @@ def test_template_preparation_is_native_and_atomic():
             'arr1': [{'image_box': {'title': 'Step', 'descr': ''}}],
         }),
         '3': DraftBlock('3', '165', {
-            'show_vk': 1, 'link_vk': '', 'text': 'Название товара',
+            'show_vk': 1, 'link_vk': '', 'show_tg': 1, 'link_tg': 'https://tobiz.net/demo',
+            'text': 'Название товара',
         }),
-    }, order=['1', '2', '3'])
+        '4': DraftBlock('4', '306', {
+            'back_dark': 1, 'show_form_title': 1,
+            'form_title': '<strong>Contact us</strong>',
+        }),
+    }, order=['1', '2', '3', '4'])
     before = copy.deepcopy(draft)
     candidate, changes, warnings = prepare_template(draft, fingerprint(draft))
     assert draft == before
@@ -43,7 +48,9 @@ def test_template_preparation_is_native_and_atomic():
     assert candidate.blocks['2'].values['fix_txt_img'] == 1
     assert candidate.blocks['2'].values['active_off'] == 1
     assert candidate.blocks['3'].values['show_vk'] == 0
-    assert len(changes) == 5
+    assert candidate.blocks['3'].values['show_tg'] == 0
+    assert '#ffffff' in candidate.blocks['4'].values['form_title']
+    assert len(changes) == 7
     assert warnings[0]['code'] == 'demo_content'
 
 
@@ -91,6 +98,22 @@ def test_compact_audit_filters_map_canvas_and_surfaces_real_errors():
     assert result['status'] == 'needs_fix'
     assert result['critical'][0]['code'] == 'missing_anchor'
     assert {x['code'] for x in result['warnings']} == {'inactive_optional_link', 'missing_alt'}
+
+
+def test_compact_audit_ignores_hidden_fields_and_closed_mobile_menu():
+    report = {'url': 'https://example.test', 'viewports': {'mobile': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [{'tag': 'ul', 'classes': ['menu']} ]},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'interactions': {'broken': [], 'forms': [{
+            'visible': True,
+            'issues': [{'tag': 'input', 'issues': ['not_visible']}],
+        }]},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['status'] == 'pass'
+    assert result['critical'] == []
+    assert result['viewports']['mobile']['form_issues'] == 0
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
