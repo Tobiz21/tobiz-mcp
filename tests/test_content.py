@@ -9,6 +9,7 @@ from tobiz_mcp.domain.audit import compact
 from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
 from tobiz_mcp.tools import register
+from tobiz_mcp.service import Service
 from tobiz_mcp.domain.content import recipe_edits
 from tobiz_mcp.domain.template import prepare_template
 
@@ -172,6 +173,19 @@ def test_compact_audit_blocks_button_matching_section_surface():
     result = compact(report)
     assert result['verdict'] == 'save_blocked'
     assert result['critical'][0]['code'] == 'button_surface_contrast'
+
+
+@pytest.mark.asyncio
+async def test_health_identifies_loaded_quality_features(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(
+        transport='stdio', read_only=False, dry_run=False, assets_dir=tmp_path)
+    service.client = SimpleNamespace(describe_session=lambda: {'present': True})
+    service.bridge = SimpleNamespace(available=True)
+    service._counters = {}
+    result = await service.health()
+    assert result['version'] == '0.2.0'
+    assert 'button_surface_contrast_detection' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

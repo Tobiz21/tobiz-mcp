@@ -965,6 +965,14 @@ class Service:
 
         return {
             "version": __version__,
+            "features": [
+                "native_template_pipeline",
+                "desktop_mobile_audit",
+                "source_content_detection",
+                "text_contrast_detection",
+                "button_surface_contrast_detection",
+                "block_geometry_detection",
+            ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
             "dry_run": self.config.dry_run,
