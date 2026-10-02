@@ -14,6 +14,7 @@ from .domain import blocks as block_domain
 from .domain import content as content_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
+from .domain import design as design_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -42,6 +43,7 @@ READ_TOOLS = {
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
     "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
     "tobiz_get_product_offer",
+    "tobiz_design_library", "tobiz_select_design",
 }
 
 
@@ -117,6 +119,22 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Версия сервиса, режимы, состояние сессии, доступность рендерера, счётчики ошибок.")
     async def tobiz_health() -> dict[str, Any]:
         return await service.health()
+
+    @tool("tobiz_design_library",
+          "Machine-readable library of installed native TOBIZ template passports and visual references. "
+          "Returns source project/page IDs, structure density, Flex share, strengths and image dependency.")
+    async def tobiz_design_library() -> dict[str, Any]:
+        return design_domain.library()
+
+    @tool("tobiz_select_design",
+          "Rank installed native templates for a website brief. brief may include industry, offer, audience, "
+          "goal, needs/features, visual_system, page_length and photo_quality. Returns an explainable choice, "
+          "alternatives, risks and visual references; does not copy or change a site.")
+    async def tobiz_select_design(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
+        try:
+            return design_domain.select(brief, top_k)
+        except (TypeError, ValueError) as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
 
     # --- чтение структуры ---
 

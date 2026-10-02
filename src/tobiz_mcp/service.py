@@ -972,6 +972,7 @@ class Service:
                 "text_contrast_detection",
                 "button_surface_contrast_detection",
                 "block_geometry_detection",
+                "design_passport_selection",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
