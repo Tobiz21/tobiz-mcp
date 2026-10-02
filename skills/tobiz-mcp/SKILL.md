@@ -174,6 +174,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 * **Собрать секцию**: `search_blocks` («тарифы», «обзор», «отзывы») → `describe_block` →
   `add_block` с `values` → `save_page` → `verify_page`.
+* **Проверить ручное пересохранение**: перед открытием готовой страницы в визуальном редакторе
+  вызови `tobiz_editor_roundtrip_check`. `save_blocked` запрещает пересохранение до исправления
+  критичных блоков; `review` требует проверить предупреждения; только `editor_safe` означает,
+  что штатный payload, порядок блоков и их cache собраны без критичных расхождений.
 * **Поправить текст**: `list_blocks` → `get_block` (или `describe_block only=changed`) →
   `update_block` с новыми полями → `save_page`.
 * **Прописать SEO**: `page_info` → `update_page(seo_title=…, seo_description=…, seo_keywords=…,

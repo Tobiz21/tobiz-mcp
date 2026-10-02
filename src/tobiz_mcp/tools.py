@@ -44,6 +44,7 @@ READ_TOOLS = {
     "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
     "tobiz_get_product_offer",
     "tobiz_design_library", "tobiz_select_design",
+    "tobiz_editor_roundtrip_check",
 }
 
 
@@ -135,6 +136,14 @@ def register(mcp: Any, service: Service) -> list[str]:
             return design_domain.select(brief, top_k)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+
+    @tool("tobiz_editor_roundtrip_check",
+          "Read-only simulation of a TOBIZ visual-editor save. Renders every native block and validates "
+          "payload order/cache, block availability, anchors, visibility, forms and Flex share. Never saves.")
+    async def tobiz_editor_roundtrip_check(project_id: Id | None = None,
+                                           page_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return await service.editor_roundtrip(project_id, page_id)
 
     # --- чтение структуры ---
 

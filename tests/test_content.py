@@ -184,9 +184,10 @@ async def test_health_identifies_loaded_quality_features(tmp_path):
     service.bridge = SimpleNamespace(available=True)
     service._counters = {}
     result = await service.health()
-    assert result['version'] == '0.3.0'
+    assert result['version'] == '0.4.0'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
+    assert 'editor_roundtrip_check' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

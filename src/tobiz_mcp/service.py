@@ -14,6 +14,7 @@ from typing import Any
 from . import errors, log
 from .config import Config
 from .domain import blocks as block_domain
+from .domain import editor as editor_domain
 from .domain.draft import Draft, DraftStore
 from .render.bridge import RenderBridge
 from .session import SessionStore
@@ -802,6 +803,47 @@ class Service:
 
     # --- сохранение ---
 
+    async def editor_roundtrip(self, project_id: str, page_id: str) -> dict[str, Any]:
+        """Simulate the editor's native SaveBlocks payload without writing anything."""
+        existing = self.drafts.get(project_id, page_id)
+        if existing is not None and existing.has_changes:
+            raise errors.TobizError(
+                errors.CONFLICT,
+                "В MCP-черновике есть несохраненные изменения",
+                "Сохраните их или вызовите tobiz_discard_changes перед проверкой редактора",
+            )
+
+        draft = await self.draft(project_id, page_id, refresh=True)
+        types = await self.block_types(project_id)
+        items: list[dict[str, Any]] = []
+        for block_id in draft.order:
+            block = draft.blocks.get(block_id)
+            if block is None:
+                continue
+            block_type = types.get(block.type_id)
+            if block_type is None or not getattr(block_type, "has_template", True):
+                continue
+            server_defaults: dict[str, Any] = {}
+            try:
+                server_defaults = await self.catalog.default_values(project_id, block_type)
+            except errors.TobizError:
+                pass
+            values = {**block_type.values, **server_defaults, **block.values}
+            items.append({"block_id": block_id, "type_id": block.type_id, "values": values})
+
+        project_dir = self.catalog.project_dir(project_id) / "bundles"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            rendered = await self.bridge.render(project_dir, items)
+        except errors.TobizError:
+            self._counters["render_failed"] += 1
+            raise
+        payload = payload_builder.build(draft, rendered)
+        result = editor_domain.report(draft, types, rendered, payload)
+        result.update({"project_id": project_id, "page_id": page_id,
+                       "draft_hash": draft.change_hash(), "changed_site": False})
+        return result
+
     async def save_page(self, project_id: str, page_id: str, verify: bool = True,
                         only_if_changed: bool = True,
                         expected_block_hashes: dict[str, str] | None = None,
@@ -973,6 +1015,7 @@ class Service:
                 "button_surface_contrast_detection",
                 "block_geometry_detection",
                 "design_passport_selection",
+                "editor_roundtrip_check",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

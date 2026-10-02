@@ -61,4 +61,5 @@ def test_design_tools_are_registered_as_read_only_operations():
             return lambda fn: fn
 
     names = register(MCP(), SimpleNamespace(config=SimpleNamespace(read_only=False)))
-    assert {'tobiz_design_library', 'tobiz_select_design'} <= set(names)
+    assert {'tobiz_design_library', 'tobiz_select_design',
+            'tobiz_editor_roundtrip_check'} <= set(names)
