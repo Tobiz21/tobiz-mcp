@@ -1017,6 +1017,7 @@ class Service:
                 "design_passport_selection",
                 "editor_roundtrip_check",
                 "quality_page_pipeline",
+                "compact_quality_blueprint",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

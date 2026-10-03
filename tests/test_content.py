@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tobiz_mcp.domain.content import content_map, fingerprint, passport, prepare
+from tobiz_mcp.domain.content import compact_blueprint, content_map, fingerprint, passport, prepare
 from tobiz_mcp.domain.audit import compact
 from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
@@ -71,6 +71,20 @@ def test_map_and_structure():
     assert candidate.blocks['3'].values['items'][0]['image'] == 'null.png'
     assert candidate.blocks['3'].values['columns'] == 4
     assert candidate.order == draft.order
+
+
+def test_compact_blueprint_groups_image_variants_and_omits_empty_text():
+    draft = Draft('1', '2', blocks={'3': DraftBlock('3', '130', {
+        'title': 'Каталог', 'sub_title': '',
+        'arr1': [{'image1': 'a.jpg', 'image1_1': 'b.jpg', 'image1_2': 'c.jpg'}],
+    })}, order=['3'])
+    result = compact_blueprint(passport(draft), content_map(draft))
+    assert result['recipe']['types'] == ['130']
+    assert [slot['path'] for slot in result['recipe']['slots']] == ['/title']
+    assert result['image_slots'] == 3
+    assert result['image_groups'] == 1
+    assert result['photo_slots'][0]['path_pattern'] == '/arr1/0/image1'
+    assert result['photo_slots'][0]['slots'] == 3
 
 
 def test_map_includes_native_nested_subtitles_and_form_copy():
@@ -184,11 +198,12 @@ async def test_health_identifies_loaded_quality_features(tmp_path):
     service.bridge = SimpleNamespace(available=True)
     service._counters = {}
     result = await service.health()
-    assert result['version'] == '0.5.0'
+    assert result['version'] == '0.6.0'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']
     assert 'quality_page_pipeline' in result['features']
+    assert 'compact_quality_blueprint' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

@@ -827,7 +827,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                                        source_terms: list[str] | None = None,
                                        seo: dict[str, Any] | None = None,
                                        apply: bool = False,
-                                       viewports: list[str] | None = None) -> dict[str, Any]:
+                                       viewports: list[str] | None = None,
+                                       details: bool = False) -> dict[str, Any]:
         if not isinstance(brief, dict):
             raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
         try:
@@ -864,20 +865,19 @@ def register(mcp: Any, service: Service) -> list[str]:
             viewports=viewports or ["desktop", "mobile"],
         )
         passport = result.get("passport", {})
-        photo_slots = [
-            {"block_index": block.get("block_index"), "type_id": block.get("type_id"),
-             "path": field.get("path"), "role": field.get("role"),
-             "image_hint": field.get("image_hint")}
-            for block in passport.get("blocks", [])
-            for field in block.get("fields", []) if field.get("kind") == "image"
-        ]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            passport, content_domain.content_map(source_draft)) if passport else {}
+        if not details:
+            result.pop("passport", None)
+        result["blueprint"] = blueprint
         result["design"] = {
             "template": selected,
             "visual_references": selection["visual_references"],
             "flex_limit": 0.3,
             "native_blocks_only": True,
         }
-        result["photo_slots"] = photo_slots
+        result["photo_slots"] = blueprint.get("photo_slots", [])
         result["quality_gates"] = [
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
             "desktop_mobile_audit", "editor_roundtrip_safe",

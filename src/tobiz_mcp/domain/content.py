@@ -103,6 +103,57 @@ def passport(draft):
             "note": "Text limits are conservative design guidance, not TOBIZ technical limits."}
 
 
+def compact_blueprint(passport_data, content_data):
+    """Convert the verbose passport into an editable recipe and grouped media plan."""
+    values = {
+        (str(block.get("block_id")), field.get("path")): field.get("value", "")
+        for block in content_data.get("blocks", [])
+        for field in block.get("fields", [])
+    }
+    recipe_slots = []
+    media_groups = {}
+    block_types = []
+    for block in passport_data.get("blocks", []):
+        block_index = block.get("block_index")
+        block_id = str(block.get("block_id"))
+        block_type = str(block.get("type_id"))
+        block_types.append(block_type)
+        for field in block.get("fields", []):
+            path = str(field.get("path") or "")
+            kind = field.get("kind")
+            current = values.get((block_id, path), "")
+            if kind in {"text", "link"} and str(current).strip():
+                recipe_slots.append({
+                    "block_index": block_index,
+                    "path": path,
+                    "kind": kind,
+                    "role": field.get("role"),
+                    "current": current,
+                    **({"recommended_max_chars": field["recommended_max_chars"]}
+                       if field.get("recommended_max_chars") else {}),
+                })
+            elif kind == "image":
+                canonical = re.sub(r"_\d+$", "", path)
+                key = (block_index, block_type, canonical, field.get("role"), field.get("image_hint"))
+                group = media_groups.setdefault(key, {
+                    "block_index": block_index,
+                    "type_id": block_type,
+                    "path_pattern": canonical,
+                    "role": field.get("role"),
+                    "image_hint": field.get("image_hint"),
+                    "slots": 0,
+                })
+                group["slots"] += 1
+    return {
+        "hash": passport_data.get("hash"),
+        "recipe": {"types": block_types, "slots": recipe_slots},
+        "photo_slots": list(media_groups.values()),
+        "text_slots": len(recipe_slots),
+        "image_slots": sum(item["slots"] for item in media_groups.values()),
+        "image_groups": len(media_groups),
+    }
+
+
 def recipe_edits(draft, recipe):
     """Bind positional content slots to a copy with different native block IDs."""
     active = [draft.blocks[bid] for bid in draft.order if not draft.blocks[bid].deleted]
