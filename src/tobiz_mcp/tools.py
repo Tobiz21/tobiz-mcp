@@ -817,6 +817,88 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "warnings": first_warnings + last_warnings,
                 "save": save_result, "seo": seo_result, "audit": summary}
 
+    @tool("tobiz_build_quality_page", "Brief-driven native TOBIZ quality pipeline. Selects a verified "
+          "installed template, enforces the 30% Flex limit, returns a photo-slot manifest in preview, "
+          "then copies, fills and saves once. Apply mode also runs desktop/mobile audit and an editor "
+          "round-trip safety check. No custom HTML/CSS/JS or new blocks are added.")
+    async def tobiz_build_quality_page(brief: dict[str, Any], target_project_id: Id = "",
+                                       title: str = "", recipe: dict[str, Any] | None = None,
+                                       replacement_image: str | None = None,
+                                       source_terms: list[str] | None = None,
+                                       seo: dict[str, Any] | None = None,
+                                       apply: bool = False,
+                                       viewports: list[str] | None = None) -> dict[str, Any]:
+        if not isinstance(brief, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
+        try:
+            selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+        except (TypeError, ValueError) as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        if apply and not recipe:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Для сборки требуется recipe из предпросмотра",
+                "Сначала вызовите apply=false, заполните штатные текстовые слоты и повторите",
+            )
+        if apply and not replacement_image:
+            slots = recipe.get("slots", []) if isinstance(recipe, dict) else []
+            has_images = any("image" in str(slot.get("path") or "").lower()
+                             for slot in slots if isinstance(slot, dict))
+            if not has_images:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT,
+                    "Укажите replacement_image или изображения в recipe",
+                    "Исходные фотографии шаблона нельзя оставлять на новом сайте",
+                )
+
+        result = await tobiz_build_from_template(
+            source_project_id=selected["project_id"],
+            source_page_id=selected["page_id"],
+            target_project_id=target_project_id,
+            title=title,
+            recipe=recipe,
+            replacement_image=replacement_image,
+            source_terms=source_terms,
+            seo=seo,
+            apply=apply,
+            viewports=viewports or ["desktop", "mobile"],
+        )
+        passport = result.get("passport", {})
+        photo_slots = [
+            {"block_index": block.get("block_index"), "type_id": block.get("type_id"),
+             "path": field.get("path"), "role": field.get("role"),
+             "image_hint": field.get("image_hint")}
+            for block in passport.get("blocks", [])
+            for field in block.get("fields", []) if field.get("kind") == "image"
+        ]
+        result["design"] = {
+            "template": selected,
+            "visual_references": selection["visual_references"],
+            "flex_limit": 0.3,
+            "native_blocks_only": True,
+        }
+        result["photo_slots"] = photo_slots
+        result["quality_gates"] = [
+            "native_blocks_only", "flex_share_lte_30_percent", "single_save",
+            "desktop_mobile_audit", "editor_roundtrip_safe",
+        ]
+        if apply:
+            page = result.get("page") or {}
+            target_page_id = str(page.get("page_id") or "")
+            target_project = str(target_project_id or selected["project_id"])
+            roundtrip = await service.editor_roundtrip(target_project, target_page_id)
+            result["editor_roundtrip"] = roundtrip
+            audit_verdict = (result.get("audit") or {}).get("verdict", "review")
+            if audit_verdict == "save_blocked" or not roundtrip.get("editor_safe"):
+                result["quality_verdict"] = "save_blocked"
+            elif audit_verdict != "ready" or roundtrip.get("warnings"):
+                result["quality_verdict"] = "review"
+            else:
+                result["quality_verdict"] = "ready"
+        else:
+            result["quality_verdict"] = "preview"
+        return result
+
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "
           "с названием страницы — сначала проверьте, ту ли удаляете (tobiz_list_pages).")

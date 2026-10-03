@@ -1016,6 +1016,7 @@ class Service:
                 "block_geometry_detection",
                 "design_passport_selection",
                 "editor_roundtrip_check",
+                "quality_page_pipeline",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -48,6 +48,17 @@ def test_native_preference_penalizes_flex_heavy_generic_expert_template():
     assert any('Flex' in risk for risk in dog['risks'])
 
 
+def test_quality_selection_enforces_native_flex_limit():
+    selection, selected = design.select_native({
+        'industry': 'Медицинская клиника',
+        'goal': 'Запись к врачу',
+        'needs': ['booking', 'experts', 'contacts'],
+    })
+    assert selection['recommended']['id'] == 'medical-booking'
+    assert selection['recommended']['flex_share'] > .3
+    assert selected['flex_share'] <= .3
+
+
 def test_empty_brief_is_rejected_and_top_k_is_bounded():
     with pytest.raises(ValueError):
         design.select({})
@@ -62,4 +73,4 @@ def test_design_tools_are_registered_as_read_only_operations():
 
     names = register(MCP(), SimpleNamespace(config=SimpleNamespace(read_only=False)))
     assert {'tobiz_design_library', 'tobiz_select_design',
-            'tobiz_editor_roundtrip_check'} <= set(names)
+            'tobiz_editor_roundtrip_check', 'tobiz_build_quality_page'} <= set(names)

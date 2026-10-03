@@ -179,3 +179,14 @@ def select(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
     return {"brief_concepts": sorted(brief_concepts), "recommended": ranked[0],
             "alternatives": ranked[1:top_k], "visual_references": reference_ranked[:2],
             "rule": "Copy the installed structure; replace content and media; keep native blocks."}
+
+
+def select_native(brief: dict[str, Any], max_flex_share: float = 0.3) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the full ranking and its best native-first candidate."""
+    selection = select(brief, top_k=len(INSTALLED))
+    ranked = [selection["recommended"], *selection["alternatives"]]
+    eligible = [item for item in ranked
+                if float(item.get("flex_share") or 0) <= max_flex_share]
+    if not eligible:
+        raise ValueError(f"no verified template with Flex share <= {max_flex_share}")
+    return selection, eligible[0]
