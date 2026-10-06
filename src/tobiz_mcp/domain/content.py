@@ -154,6 +154,60 @@ def compact_blueprint(passport_data, content_data):
     }
 
 
+GENERIC_COPY = {
+    "ваше имя", "имя", "телефон", "ваш телефон", "email", "e-mail", "сообщение",
+    "отправить", "отправить заявку", "оставить заявку", "заказать", "подробнее",
+    "согласен на обработку персональных данных", "нажимая кнопку, вы соглашаетесь",
+}
+
+
+def recipe_coverage(blueprint, recipe):
+    """Check that meaningful source copy is replaced before a template is copied."""
+    expected = blueprint.get("recipe", {})
+    expected_types = expected.get("types", [])
+    if not isinstance(recipe, dict) or recipe.get("types") != expected_types:
+        return {
+            "valid_structure": False, "coverage": 0.0, "required": 0, "replaced": 0,
+            "missing": [], "unchanged": [], "complete": False,
+            "message": "Recipe block sequence differs from the selected template.",
+        }
+
+    supplied = {
+        (slot.get("block_index"), slot.get("path")): slot.get("value", "")
+        for slot in recipe.get("slots", []) if isinstance(slot, dict)
+    }
+    required = []
+    for slot in expected.get("slots", []):
+        current = str(slot.get("current") or "")
+        normalized = _plain(current).lower().replace("ё", "е")
+        if slot.get("kind") == "text" and normalized in GENERIC_COPY:
+            continue
+        if slot.get("kind") == "link" and (not current or current.startswith("#")):
+            continue
+        required.append(slot)
+
+    missing, unchanged = [], []
+    replaced = 0
+    for slot in required:
+        key = (slot.get("block_index"), slot.get("path"))
+        if key not in supplied or not str(supplied[key]).strip():
+            missing.append({"block_index": key[0], "path": key[1], "current": slot.get("current", "")})
+        elif str(supplied[key]).strip() == str(slot.get("current", "")).strip():
+            unchanged.append({"block_index": key[0], "path": key[1], "current": slot.get("current", "")})
+        else:
+            replaced += 1
+    count = len(required)
+    return {
+        "valid_structure": True,
+        "coverage": round(replaced / count, 3) if count else 1.0,
+        "required": count,
+        "replaced": replaced,
+        "missing": missing,
+        "unchanged": unchanged,
+        "complete": not missing and not unchanged,
+    }
+
+
 def recipe_edits(draft, recipe):
     """Bind positional content slots to a copy with different native block IDs."""
     active = [draft.blocks[bid] for bid in draft.order if not draft.blocks[bid].deleted]

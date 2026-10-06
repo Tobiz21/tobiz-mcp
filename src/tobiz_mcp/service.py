@@ -1018,6 +1018,7 @@ class Service:
                 "editor_roundtrip_check",
                 "quality_page_pipeline",
                 "compact_quality_blueprint",
+                "quality_recipe_coverage",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

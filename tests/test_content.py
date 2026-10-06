@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tobiz_mcp.domain.content import compact_blueprint, content_map, fingerprint, passport, prepare
+from tobiz_mcp.domain.content import compact_blueprint, content_map, fingerprint, passport, prepare, recipe_coverage
 from tobiz_mcp.domain.audit import compact
 from tobiz_mcp.domain.draft import Draft, DraftBlock, DraftStore
 from tobiz_mcp.errors import TobizError
@@ -85,6 +85,25 @@ def test_compact_blueprint_groups_image_variants_and_omits_empty_text():
     assert result['image_groups'] == 1
     assert result['photo_slots'][0]['path_pattern'] == '/arr1/0/image1'
     assert result['photo_slots'][0]['slots'] == 3
+
+
+def test_recipe_coverage_requires_meaningful_copy_but_skips_generic_controls():
+    draft = Draft('1', '2', blocks={'3': DraftBlock('3', '1154', {
+        'title': 'Старый заголовок', 'phone1': '+7 900 000-00-00',
+        'btn1': {'title': 'Отправить заявку', 'link': '#form'},
+    })}, order=['3'])
+    blueprint = compact_blueprint(passport(draft), content_map(draft))
+    recipe = {'types': ['1154'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Новый заголовок'},
+        {'block_index': 0, 'path': '/phone1', 'value': '+7 900 000-00-00'},
+    ]}
+    result = recipe_coverage(blueprint, recipe)
+    assert result['required'] == 2
+    assert result['replaced'] == 1
+    assert result['unchanged'][0]['path'] == '/phone1'
+    assert result['complete'] is False
+    recipe['slots'][1]['value'] = '+7 8352 00-00-00'
+    assert recipe_coverage(blueprint, recipe)['complete'] is True
 
 
 def test_map_includes_native_nested_subtitles_and_form_copy():
@@ -198,12 +217,13 @@ async def test_health_identifies_loaded_quality_features(tmp_path):
     service.bridge = SimpleNamespace(available=True)
     service._counters = {}
     result = await service.health()
-    assert result['version'] == '0.6.0'
+    assert result['version'] == '0.7.0'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']
     assert 'quality_page_pipeline' in result['features']
     assert 'compact_quality_blueprint' in result['features']
+    assert 'quality_recipe_coverage' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

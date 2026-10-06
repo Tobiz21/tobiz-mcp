@@ -835,11 +835,25 @@ def register(mcp: Any, service: Service) -> list[str]:
             selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        source_passport = content_domain.passport(source_draft)
+        blueprint = content_domain.compact_blueprint(
+            source_passport, content_domain.content_map(source_draft))
+        coverage_recipe = recipe or {
+            "types": blueprint.get("recipe", {}).get("types", []), "slots": []}
+        coverage = content_domain.recipe_coverage(blueprint, coverage_recipe)
         if apply and not recipe:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT,
                 "Для сборки требуется recipe из предпросмотра",
                 "Сначала вызовите apply=false, заполните штатные текстовые слоты и повторите",
+            )
+        if apply and not coverage.get("complete"):
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                f"Рецепт заполнен не полностью: {coverage['replaced']} из {coverage['required']}",
+                "Замените поля из missing и unchanged; страница еще не создана",
+                raw=coverage,
             )
         if apply and not replacement_image:
             slots = recipe.get("slots", []) if isinstance(recipe, dict) else []
@@ -864,13 +878,13 @@ def register(mcp: Any, service: Service) -> list[str]:
             apply=apply,
             viewports=viewports or ["desktop", "mobile"],
         )
-        passport = result.get("passport", {})
-        source_draft = await service.draft(selected["project_id"], selected["page_id"])
-        blueprint = content_domain.compact_blueprint(
-            passport, content_domain.content_map(source_draft)) if passport else {}
         if not details:
             result.pop("passport", None)
         result["blueprint"] = blueprint
+        result["recipe_coverage"] = coverage if recipe else {
+            key: value for key, value in coverage.items()
+            if key not in {"missing", "unchanged"}
+        }
         result["design"] = {
             "template": selected,
             "visual_references": selection["visual_references"],
@@ -880,7 +894,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["photo_slots"] = blueprint.get("photo_slots", [])
         result["quality_gates"] = [
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
-            "desktop_mobile_audit", "editor_roundtrip_safe",
+            "complete_recipe_before_copy", "desktop_mobile_audit", "editor_roundtrip_safe",
         ]
         if apply:
             page = result.get("page") or {}
