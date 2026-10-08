@@ -16,7 +16,7 @@ API у конструктора нет — сервер работает с вн
 справочников:
 
 ```bash
-git clone https://github.com/raydev-ru/tobiz-mcp.git /tmp/tobiz-mcp
+git clone https://github.com/Tobiz21/tobiz-mcp.git /tmp/tobiz-mcp
 cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 ```
 

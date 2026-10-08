@@ -3,6 +3,14 @@
 MCP-сервер для конструктора сайтов **TOBIZ**: даёт агенту (Hermes, Codex, OpenCode и любому
 MCP-клиенту) читать и менять сайты — проекты, страницы, блоки, изображения.
 
+Репозиторий: <https://github.com/Tobiz21/tobiz-mcp>
+
+## Короткая инструкция для ИИ
+
+> Установи TOBIZ MCP с <https://github.com/Tobiz21/tobiz-mcp>. Запусти безопасный мастер
+> настройки и попроси меня ввести данные TOBIZ в скрытом запросе, не в чате. Затем уточни,
+> с каким сайтом и что нужно сделать, и используй только штатные функции TOBIZ.
+
 ## Выбор дизайна
 
 - `tobiz_design_library` возвращает паспорта девяти установленных штатных шаблонов и семнадцати
@@ -17,8 +25,11 @@ MCP-клиенту) читать и менять сайты — проекты, 
 
 ## Быстрый старт
 
+Поддерживаемый способ установки публичной бета-версии - Docker. Python wheel сам по себе не
+содержит Node-рендерер TOBIZ и не является полноценной установкой сервера.
+
 ```bash
-git clone git@github.com:raydev-ru/tobiz-mcp.git && cd tobiz-mcp
+git clone https://github.com/Tobiz21/tobiz-mcp.git && cd tobiz-mcp
 docker build -t tobiz-mcp .
 docker run --rm -it --entrypoint tobiz-mcp-configure \
   -v "$PWD:/config" tobiz-mcp --projects 123456,123457 --output /config/.env
@@ -118,7 +129,7 @@ docker run -d --name tobiz-mcp --restart unless-stopped -p 8765:8765 \
 эндпоинты). Копируй папку целиком:
 
 ```bash
-git clone https://github.com/raydev-ru/tobiz-mcp.git /tmp/tobiz-mcp
+git clone https://github.com/Tobiz21/tobiz-mcp.git /tmp/tobiz-mcp
 cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 ```
 

@@ -4,6 +4,8 @@
 
 - [ ] CI: все тесты прошли.
 - [ ] CI: Docker-образ собран.
+- [ ] README и скил не содержат ссылок на прежний репозиторий.
+- [ ] Пользователю предлагается Docker-установка; wheel не выдается как полноценная сборка без Node-рендерера.
 - [ ] `tobiz-mcp-selftest --release PAGE_ID --project PROJECT_ID` вернул код `0`.
 - [ ] В JSON-отчете `release_ready=true` и `missing_features=[]`.
 
