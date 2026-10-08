@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -24,3 +25,16 @@ def test_readme_marks_docker_as_supported_distribution() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "Поддерживаемый способ установки публичной бета-версии - Docker" in readme
     assert "wheel сам по себе не" in readme
+
+
+def test_server_manifest_matches_public_container() -> None:
+    manifest = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    assert manifest["name"] == "io.github.tobiz21/tobiz-mcp"
+    assert manifest["version"] == "0.9.0-beta.1"
+    assert manifest["repository"]["url"] == PUBLIC_REPOSITORY
+    package = manifest["packages"][0]
+    assert package["registryType"] == "oci"
+    assert package["identifier"] == "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1"
+    variables = {item["name"]: item for item in package["environmentVariables"]}
+    assert variables["TOBIZ_PASSWORD"]["isSecret"] is True
+    assert variables["TOBIZ_ALLOWED_PROJECT_IDS"]["isRequired"] is True

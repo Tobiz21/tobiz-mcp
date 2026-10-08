@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tobiz21/tobiz-mcp",
+  "title": "TOBIZ MCP",
+  "description": "Create, edit and audit TOBIZ websites, pages, blocks, articles and products.",
+  "repository": {
+    "url": "https://github.com/Tobiz21/tobiz-mcp",
+    "source": "github"
+  },
+  "version": "0.9.0-beta.1",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TOBIZ_EMAIL",
+          "description": "TOBIZ account email. Prefer an existing session when available.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "TOBIZ_PASSWORD",
+          "description": "TOBIZ account password. Enter through a secret prompt, never in chat.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "TOBIZ_ALLOWED_PROJECT_IDS",
+          "description": "Comma-separated TOBIZ project IDs that this server may access.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "TOBIZ_REQUIRE_PROJECT_ALLOWLIST",
+          "description": "Require an explicit project allowlist for all project operations.",
+          "default": "true",
+          "isRequired": true,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
