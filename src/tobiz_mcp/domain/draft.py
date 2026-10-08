@@ -46,6 +46,7 @@ class Draft:
     order: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     base_hash: str = ""
+    server_blocks_hash: str = ""
     changed_meta: list[str] = field(default_factory=list)
 
     # --- работа с составом ---
@@ -97,8 +98,17 @@ class Draft:
 
     @property
     def has_changes(self) -> bool:
-        return bool(self.changed_meta) or any(b.changed_paths or b.origin == "created" or b.deleted
-                                              for b in self.blocks.values())
+        return (bool(self.changed_meta)
+                or any(b.changed_paths or b.origin == "created" for b in self.blocks.values())
+                or bool(self.base_hash and self.change_hash() != self.base_hash))
+
+    def mark_saved(self) -> None:
+        """Advance the local baseline only after the server accepts the payload."""
+        for block in self.blocks.values():
+            block.origin = "server"
+            block.changed_paths.clear()
+        self.changed_meta.clear()
+        self.base_hash = self.change_hash()
 
     def change_hash(self) -> str:
         payload: Any = {"blocks": [
@@ -113,6 +123,13 @@ class Draft:
         ], "page_meta": self.page_meta}
         blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:32]
+
+    def blocks_hash(self, exclude: set[str] | None = None) -> str:
+        payload = [
+            (bid, b.type_id, b.values, b.cache, b.sort_id, b.position, b.deleted)
+            for bid, b in sorted(self.blocks.items()) if bid not in (exclude or set())
+        ]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
     def discard(self) -> None:
         self.blocks.clear()
@@ -169,3 +186,4 @@ class DraftStore:
         draft.order.sort(key=lambda bid: draft.blocks[bid].sort_id)
         draft._reindex()
         draft.base_hash = draft.change_hash()
+        draft.server_blocks_hash = draft.blocks_hash()

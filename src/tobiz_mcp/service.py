@@ -131,11 +131,9 @@ class Service:
 
     async def draft(self, project_id: str, page_id: str, refresh: bool = False) -> Draft:
         existing = self.drafts.get(project_id, page_id)
-        if existing is not None and not refresh:
+        if existing is not None and existing.has_changes and not refresh:
             return existing
         meta = await self._editor_page_meta(project_id, page_id)
-        draft = existing or self.drafts.create(project_id, page_id, meta)
-        draft.page_meta.update(meta)
         envelope = await self.client.editor_ajax(
             ep.ACT_GET_BLOCKS, self.config.lp_base(project_id), page_id, rep_id=page_id)
         if not envelope.ok:
@@ -145,12 +143,27 @@ class Service:
                 "Проверьте сессию и доступ к странице",
             )
         raw_blocks = blocks_from(envelope)
-        if refresh:
-            draft.blocks.clear()
-            draft.order.clear()
-            draft.changed_meta.clear()
+        # Build off-store: a failed fetch must not partially overwrite a draft.
+        draft = Draft(project_id=str(project_id), page_id=str(page_id), page_meta=meta)
         self.drafts.load_blocks(draft, raw_blocks)
+        self.drafts.put(draft)
         return draft
+
+    async def _check_remote_blocks(self, draft: Draft) -> None:
+        if not draft.server_blocks_hash:
+            raise errors.TobizError(errors.CONFLICT, "Нет исходной версии блоков для безопасного сохранения")
+        envelope = await self.client.editor_ajax(
+            ep.ACT_GET_BLOCKS, self.config.lp_base(draft.project_id), draft.page_id,
+            rep_id=draft.page_id)
+        if not envelope.ok:
+            raise errors.TobizError(errors.ACCESS_DENIED, "Не удалось проверить актуальность страницы")
+        remote = Draft(project_id=draft.project_id, page_id=draft.page_id)
+        DraftStore().load_blocks(remote, blocks_from(envelope))
+        created = {bid for bid, block in draft.blocks.items() if block.origin == "created"}
+        if remote.blocks_hash(exclude=created) != draft.server_blocks_hash:
+            raise errors.TobizError(
+                errors.CONFLICT, "Страница изменена вне MCP после загрузки черновика",
+                "Сохранение заблокировано; локальные правки сохранены. Сверьте версии перед повтором.")
 
     async def block_types(self, project_id: str) -> dict[str, BlockType]:
         return await self.catalog.types(project_id)
@@ -920,6 +933,7 @@ class Service:
                 return preview
 
         phase = time.perf_counter()
+        await self._check_remote_blocks(draft)
         envelope = await self.client.editor_ajax(
             ep.ACT_SAVE_BLOCKS, self.config.lp_base(project_id), page_id,
             data=json.dumps(payload, ensure_ascii=False))
@@ -935,10 +949,8 @@ class Service:
         change_hash = draft.change_hash()
         # счётчики считаем ДО сброса правок: иначе ответ сообщает «изменено 0 блоков»
         changed_blocks = list(draft.changed_blocks)
-        for block_id in changed_blocks:
-            draft.blocks[block_id].changed_paths = []
         changed_meta = list(draft.changed_meta)
-        draft.changed_meta.clear()
+        draft.mark_saved()
         await self.audit("tobiz_save_page", project_id, page_id=page_id,
                          extra={"blocks_total": len(items), "blocks_changed": len(changed_blocks),
                                 "change_hash": change_hash, "result": "ok"})
