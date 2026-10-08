@@ -19,9 +19,15 @@ MCP-клиенту) читать и менять сайты — проекты, 
 
 ```bash
 git clone git@github.com:raydev-ru/tobiz-mcp.git && cd tobiz-mcp
-cp .env.example .env                 # вписать TOBIZ_EMAIL и TOBIZ_PASSWORD
 docker build -t tobiz-mcp .
+docker run --rm -it --entrypoint tobiz-mcp-configure \
+  -v "$PWD:/config" tobiz-mcp --projects 123456,123457 --output /config/.env
 ```
+
+Мастер скрыто запросит пароль, включит строгую изоляцию и разрешит MCP работать только с
+перечисленными проектами. Если `.env` уже существует, рядом останется резервная копия. Для
+автоматической установки передайте логин и пароль через окружение и добавьте
+`--non-interactive`; пароль не передавайте аргументом командной строки.
 
 Проверка, что сервер видит конструктор (логин/сессия и рендерер):
 

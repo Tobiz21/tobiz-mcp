@@ -18,6 +18,7 @@ dev = ["pytest==8.3.4", "pytest-asyncio==0.24.0"]
 [project.scripts]
 tobiz-mcp = "tobiz_mcp.__main__:main"
 tobiz-mcp-selftest = "tobiz_mcp.selftest:main"
+tobiz-mcp-configure = "tobiz_mcp.configure:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
