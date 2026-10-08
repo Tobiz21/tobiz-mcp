@@ -43,6 +43,7 @@ READ_TOOLS = {
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
     "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
     "tobiz_get_product_offer",
+    "tobiz_list_page_backups",
     "tobiz_design_library", "tobiz_select_design",
     "tobiz_editor_roundtrip_check",
 }
@@ -157,6 +158,16 @@ def register(mcp: Any, service: Service) -> list[str]:
             "projects": [p.to_dict(service.config.lp_template, include_pages) for p in projects],
             "count": len(projects),
         }
+
+    @tool("tobiz_install_template",
+          "Установить бесплатный штатный шаблон TOBIZ как отдельный проект. "
+          "По умолчанию только проверяет план; apply=true создает проект. "
+          "Платные шаблоны никогда не покупает автоматически.")
+    async def tobiz_install_template(template_id: Id, template_page_id: Id,
+                                     multipage: bool = False,
+                                     apply: bool = False) -> dict[str, Any]:
+        return await service.install_template(template_id, template_page_id,
+                                              multipage=multipage, apply=apply)
 
     @tool("tobiz_list_pages",
           "Страницы проекта: page_id (он же v в адресе редактора), название, slug, видимость, "
@@ -940,6 +951,21 @@ def register(mcp: Any, service: Service) -> list[str]:
         service.drafts.drop(project_id, page_id)
         draft = await service.draft(project_id, page_id, refresh=True)
         return {"page_id": page_id, "blocks": len(draft.blocks), "discarded": True}
+
+    @tool("tobiz_list_page_backups",
+          "Список автоматических резервных копий блоков страницы, созданных перед сохранением.")
+    async def tobiz_list_page_backups(project_id: Id | None = None,
+                                      page_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return service.list_page_backups(project_id, page_id)
+
+    @tool("tobiz_restore_page_backup",
+          "Восстановить блоки страницы из автоматической резервной копии. Перезаписывает страницу "
+          "и требует confirm=true.")
+    async def tobiz_restore_page_backup(project_id: Id | None = None, page_id: Id = "",
+                                        backup_id: str = "", confirm: bool = False) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return await service.restore_page_backup(project_id, page_id, backup_id, confirm=confirm)
 
     # --- проверка и изображения ---
 

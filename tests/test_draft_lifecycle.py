@@ -97,6 +97,30 @@ def test_remote_conflict_preserves_local_changes(monkeypatch, external):
         with pytest.raises(TobizError):
             run_mocked(service._check_remote_blocks(draft))
     else:
-        run_mocked(service._check_remote_blocks(draft))
+        remote = run_mocked(service._check_remote_blocks(draft))
+        assert remote.blocks["10"].values["title"] == "old"
     assert draft.blocks["10"].values["title"] == "local edit"
     assert draft.has_changes
+
+
+def test_backup_roundtrip_and_scope(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    _, draft = loaded()
+    backup = service._write_page_backup(draft)
+    listing = service.list_page_backups("1", "2")
+    assert listing["backups"][0]["backup_id"] == backup["backup_id"]
+    stored = (tmp_path / "backups" / "1" / "2" / f"{backup['backup_id']}.json")
+    body = __import__("json").loads(stored.read_text(encoding="utf-8"))
+    assert body["project_id"] == "1"
+    assert [item["id"] for item in body["payload"]["userBlocks"]] == ["10", "11"]
+
+
+def test_restore_requires_confirmation_and_rejects_path(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path, read_only=False)
+    service.client = SimpleNamespace()
+    with pytest.raises(TobizError):
+        run_mocked(service.restore_page_backup("1", "2", "missing", confirm=False))
+    with pytest.raises(TobizError):
+        run_mocked(service.restore_page_backup("1", "2", "../backup", confirm=True))

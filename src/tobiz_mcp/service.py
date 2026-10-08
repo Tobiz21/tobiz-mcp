@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -149,7 +150,7 @@ class Service:
         self.drafts.put(draft)
         return draft
 
-    async def _check_remote_blocks(self, draft: Draft) -> None:
+    async def _check_remote_blocks(self, draft: Draft) -> Draft:
         if not draft.server_blocks_hash:
             raise errors.TobizError(errors.CONFLICT, "Нет исходной версии блоков для безопасного сохранения")
         envelope = await self.client.editor_ajax(
@@ -164,6 +165,72 @@ class Service:
             raise errors.TobizError(
                 errors.CONFLICT, "Страница изменена вне MCP после загрузки черновика",
                 "Сохранение заблокировано; локальные правки сохранены. Сверьте версии перед повтором.")
+        return remote
+
+    def _backup_dir(self, project_id: str, page_id: str) -> Path:
+        return self.config.audit_dir / "backups" / str(project_id) / str(page_id)
+
+    def _write_page_backup(self, draft: Draft) -> dict[str, Any]:
+        target = self._backup_dir(draft.project_id, draft.page_id)
+        target.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_id = f"{stamp}-{draft.change_hash()[:12]}"
+        path = target / f"{backup_id}.json"
+        body = {
+            "schema_version": 1,
+            "backup_id": backup_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "project_id": draft.project_id,
+            "page_id": draft.page_id,
+            "payload": payload_builder.build(
+                draft, {bid: block.cache for bid, block in draft.blocks.items()}),
+        }
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+        backups = sorted(target.glob("*.json"), reverse=True)
+        for expired in backups[20:]:
+            expired.unlink(missing_ok=True)
+        return {"backup_id": backup_id, "created_at": body["created_at"]}
+
+    def list_page_backups(self, project_id: str, page_id: str) -> dict[str, Any]:
+        target = self._backup_dir(project_id, page_id)
+        items = []
+        for path in sorted(target.glob("*.json"), reverse=True) if target.exists() else []:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                items.append({"backup_id": data["backup_id"], "created_at": data["created_at"]})
+            except (OSError, ValueError, KeyError):
+                continue
+        return {"project_id": str(project_id), "page_id": str(page_id), "backups": items}
+
+    async def restore_page_backup(self, project_id: str, page_id: str,
+                                  backup_id: str, confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Восстановление требует confirm=true")
+        if self.config.read_only:
+            raise errors.read_only()
+        if Path(backup_id).name != backup_id:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Некорректный backup_id")
+        path = self._backup_dir(project_id, page_id) / f"{backup_id}.json"
+        if not path.is_file():
+            raise errors.TobizError(errors.NOT_FOUND, f"Резервная копия {backup_id} не найдена")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (str(data.get("project_id")) != str(project_id)
+                or str(data.get("page_id")) != str(page_id)):
+            raise errors.TobizError(errors.CONFLICT, "Резервная копия принадлежит другой странице")
+        if not isinstance(data.get("payload", {}).get("userBlocks"), list):
+            raise errors.TobizError(errors.CONFLICT, "Резервная копия повреждена")
+        current = await self.draft(project_id, page_id, refresh=True)
+        safety_backup = self._write_page_backup(current)
+        envelope = await self.client.editor_ajax(
+            ep.ACT_SAVE_BLOCKS, self.config.lp_base(project_id), page_id,
+            data=json.dumps(data["payload"], ensure_ascii=False))
+        if not envelope.ok:
+            raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не восстановил резервную копию")
+        self.drafts.drop(project_id, page_id)
+        return {"restored": True, "backup_id": backup_id, "safety_backup": safety_backup,
+                "verify": await self.verify_page(project_id, page_id)}
 
     async def block_types(self, project_id: str) -> dict[str, BlockType]:
         return await self.catalog.types(project_id)
@@ -719,6 +786,57 @@ class Service:
 
     # --- копирование и удаление страницы ---
 
+    async def install_template(self, template_id: str, template_page_id: str,
+                               multipage: bool = False, apply: bool = False) -> dict[str, Any]:
+        """Install a free vendor template as a separate native TOBIZ project."""
+        availability = await self.client.panel_ajax("isFree", template_id=template_id)
+        if not availability.ok:
+            raise errors.TobizError(errors.UPSTREAM_UNAVAILABLE,
+                                    "TOBIZ не проверил доступность шаблона",
+                                    raw=availability.payload)
+        free = str(availability.payload.get("free", "0")) == "1"
+        plan = {"template_id": template_id, "template_page_id": template_page_id,
+                "multipage": bool(multipage), "free": free}
+        if not free:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Шаблон платный - автоматическая покупка запрещена",
+                                    "Выберите бесплатный шаблон или купите его вручную", raw=plan)
+        if not apply:
+            return {"dry_run": True, "will_install": plan}
+        if self.config.read_only:
+            raise errors.read_only()
+
+        before = {project.project_id for project in await self.projects(refresh=True)}
+        await self.client.panel_ajax("increase_installs", template_id=template_id)
+        if multipage:
+            result = await self.client.panel_ajax(
+                "install_multipage_template", template=template_page_id)
+            if not result.ok:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "TOBIZ не установил многостраничный шаблон",
+                                        raw=result.payload)
+            link = str(result.payload.get("link") or "")
+        else:
+            project = await self.client.panel_ajax("fast_make_project")
+            if not project.ok:
+                raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не создал проект",
+                                        raw=project.payload)
+            project_id = str(project.payload.get("project_id") or "")
+            rep_id = str(project.payload.get("rep_id") or "")
+            result = await self.client.panel_ajax(
+                "install_template_to_page_3", template_id=template_page_id, rep_id=rep_id)
+            if not result.ok:
+                raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не установил шаблон",
+                                        raw=result.payload)
+            link = (f"https://{project_id}.lp.tobiz.net/?v="
+                    f"{result.payload.get('html', '')}&editor=true")
+
+        self._projects = None
+        projects = await self.projects(refresh=True)
+        created = [project.to_dict(self.config.lp_template, include_pages=True)
+                   for project in projects if project.project_id not in before]
+        return {"installed": True, "template": plan, "created": created, "editor_url": link}
+
     async def copy_page_form(self, project_id: str, page_id: str) -> page_forms.PageForm:
         """Форма копирования: название копии и список доступных проектов."""
         await self.resolve_page(project_id, page_id)
@@ -933,7 +1051,8 @@ class Service:
                 return preview
 
         phase = time.perf_counter()
-        await self._check_remote_blocks(draft)
+        remote = await self._check_remote_blocks(draft)
+        backup = self._write_page_backup(remote)
         envelope = await self.client.editor_ajax(
             ep.ACT_SAVE_BLOCKS, self.config.lp_base(project_id), page_id,
             data=json.dumps(payload, ensure_ascii=False))
@@ -962,6 +1081,7 @@ class Service:
             "meta_changed": changed_meta,
             "change_hash": change_hash,
             "response": envelope.message or envelope.status,
+            "backup": backup,
         }
         if verify:
             phase = time.perf_counter()
