@@ -44,6 +44,9 @@ ENV TOBIZ_SESSION_DIR=/data/session \
     TOBIZ_AUDIT_DIR=/data/audit \
     TOBIZ_RENDERER_DIR=/app/renderer
 
+LABEL org.opencontainers.image.source="https://github.com/Tobiz21/tobiz-mcp" \
+      io.modelcontextprotocol.server.name="io.github.tobiz21/tobiz-mcp"
+
 HEALTHCHECK --interval=60s --timeout=25s --start-period=20s --retries=3 \
     CMD ["python", "-m", "tobiz_mcp.selftest", "--health"]
 

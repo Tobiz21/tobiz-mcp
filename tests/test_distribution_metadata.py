@@ -38,3 +38,8 @@ def test_server_manifest_matches_public_container() -> None:
     variables = {item["name"]: item for item in package["environmentVariables"]}
     assert variables["TOBIZ_PASSWORD"]["isSecret"] is True
     assert variables["TOBIZ_ALLOWED_PROJECT_IDS"]["isRequired"] is True
+
+
+def test_container_declares_registry_ownership() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert 'io.modelcontextprotocol.server.name="io.github.tobiz21/tobiz-mcp"' in dockerfile

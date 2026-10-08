@@ -35,3 +35,9 @@ jobs:
         run: python -m pip wheel --no-deps --wheel-dir dist .
       - name: Build supported Docker distribution
         run: docker build -t tobiz-mcp:ci .
+      - name: Validate MCP Registry manifest
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher validate server.json
