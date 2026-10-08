@@ -91,6 +91,12 @@ class Service:
 
     def check_allowed(self, project_id: str) -> None:
         allowed = self.config.allowed_project_ids
+        if self.config.require_project_allowlist and not allowed:
+            raise errors.TobizError(
+                errors.PROJECT_NOT_ALLOWED,
+                "Строгий режим включён, но TOBIZ_ALLOWED_PROJECT_IDS пуст",
+                "Укажите разрешённые project_id или отключите TOBIZ_REQUIRE_PROJECT_ALLOWLIST",
+            )
         if allowed and str(project_id) not in allowed:
             raise errors.TobizError(
                 errors.PROJECT_NOT_ALLOWED,
@@ -1155,6 +1161,11 @@ class Service:
             "transport": self.config.transport,
             "read_only": self.config.read_only,
             "dry_run": self.config.dry_run,
+            "project_access": {
+                "strict": self.config.require_project_allowlist,
+                "allowlist_configured": bool(self.config.allowed_project_ids),
+                "allowed_project_count": len(self.config.allowed_project_ids),
+            },
             "session": self.client.describe_session(),
             "assets_dir": str(self.config.assets_dir),
             "renderer_available": self.bridge.available,

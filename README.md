@@ -206,7 +206,8 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | --- | --- |
 | `TOBIZ_EMAIL`, `TOBIZ_PASSWORD` | вход в конструктор (не нужны, если положена сессия) |
 | `TOBIZ_READ_ONLY` | `1` — только чтение, инструменты правки не регистрируются |
-| `TOBIZ_ALLOWED_PROJECT_IDS` | CSV со списком разрешённых `project_id`; пусто — все проекты аккаунта |
+| `TOBIZ_ALLOWED_PROJECT_IDS` | CSV со списком разрешённых `project_id`; пусто - все проекты аккаунта, если строгий режим выключен |
+| `TOBIZ_REQUIRE_PROJECT_ALLOWLIST` | `true` запрещает работу с проектами, пока не заполнен `TOBIZ_ALLOWED_PROJECT_IDS`; рекомендуется для общей и клиентской установки |
 | `TOBIZ_MAX_UPLOAD_MB` | лимит файла изображения (по умолчанию 10) |
 | `MCP_TRANSPORT` | `stdio` (по умолчанию) или `http` |
 | `MCP_HTTP_PORT`, `MCP_HTTP_TOKEN` | порт и токен для HTTP-транспорта |

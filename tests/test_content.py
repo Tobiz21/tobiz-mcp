@@ -208,16 +208,18 @@ def test_compact_audit_blocks_button_matching_section_surface():
     assert result['critical'][0]['code'] == 'button_surface_contrast'
 
 
-@pytest.mark.asyncio
-async def test_health_identifies_loaded_quality_features(tmp_path):
+def test_health_identifies_loaded_quality_features(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(
-        transport='stdio', read_only=False, dry_run=False, assets_dir=tmp_path)
+        transport='stdio', read_only=False, dry_run=False, assets_dir=tmp_path,
+        require_project_allowlist=False, allowed_project_ids=frozenset())
     service.client = SimpleNamespace(describe_session=lambda: {'present': True})
     service.bridge = SimpleNamespace(available=True)
     service._counters = {}
-    result = await service.health()
-    assert result['version'] == '0.7.0'
+    with pytest.raises(StopIteration) as completed:
+        service.health().send(None)
+    result = completed.value.value
+    assert result['version'] == '0.8.0'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']

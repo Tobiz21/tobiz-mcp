@@ -58,6 +58,7 @@ class Config:
     read_only: bool = False
     dry_run: bool = False
     allowed_project_ids: frozenset[str] = field(default_factory=frozenset)
+    require_project_allowlist: bool = False
     max_upload_mb: int = 10
     inbox_dir: Path = Path("/data/inbox")
     assets_dir: Path = Path("/data/assets")
@@ -110,6 +111,7 @@ class Config:
             read_only=_flag("TOBIZ_READ_ONLY"),
             dry_run=_flag("TOBIZ_DRY_RUN"),
             allowed_project_ids=frozenset(p.strip() for p in allowed.split(",") if p.strip()),
+            require_project_allowlist=_flag("TOBIZ_REQUIRE_PROJECT_ALLOWLIST"),
             max_upload_mb=_int("TOBIZ_MAX_UPLOAD_MB", 10),
             inbox_dir=Path(_env("TOBIZ_INBOX_DIR", "/data/inbox") or "/data/inbox"),
             assets_dir=Path(_env("TOBIZ_ASSETS_DIR", "/data/assets") or "/data/assets"),
