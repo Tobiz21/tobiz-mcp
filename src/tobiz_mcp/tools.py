@@ -33,7 +33,8 @@ Id = Annotated[
 ]
 READ_TOOLS = {
     "tobiz_page_content", "tobiz_template_passport", "tobiz_prepare_template",
-    "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_list_projects",
+    "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_onboarding_check",
+    "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
@@ -121,6 +122,14 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Версия сервиса, режимы, состояние сессии, доступность рендерера, счётчики ошибок.")
     async def tobiz_health() -> dict[str, Any]:
         return await service.health()
+
+    @tool("tobiz_onboarding_check",
+          "Безопасная проверка подключения перед началом работы: сессия, рендерер, изоляция "
+          "проектов и доступ. Если передать project_id и page_id, дополнительно выполняет "
+          "read-only проверку пересохранения страницы. Ничего не изменяет.")
+    async def tobiz_onboarding_check(project_id: Id | None = None,
+                                     page_id: Id | None = None) -> dict[str, Any]:
+        return await service.onboarding_check(project_id, page_id)
 
     @tool("tobiz_design_library",
           "Machine-readable library of installed native TOBIZ template passports and visual references. "

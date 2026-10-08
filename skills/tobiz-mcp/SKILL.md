@@ -30,15 +30,17 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 ## Порядок работы
 
-1. `tobiz_list_projects` → `project_id` (если проект один, его можно не указывать).
-2. `tobiz_list_pages` → `page_id` нужной страницы.
-3. Понять, что уже есть: `tobiz_page_summary` (компактно) или `tobiz_list_blocks`.
-4. Найти подходящий тип блока: `tobiz_search_blocks` (русский поиск по названию/описанию) →
+1. При первом подключении запусти `tobiz_onboarding_check`. Для личной тестовой установки достаточно
+   `ready=true`; перед передачей MCP другому пользователю требуется `distribution_ready=true`.
+2. `tobiz_list_projects` → `project_id` (если проект один, его можно не указывать).
+3. `tobiz_list_pages` → `page_id` нужной страницы.
+4. Понять, что уже есть: `tobiz_page_summary` (компактно) или `tobiz_list_blocks`.
+5. Найти подходящий тип блока: `tobiz_search_blocks` (русский поиск по названию/описанию) →
    `tobiz_describe_block` (схема полей: имена, русские подписи, значения по умолчанию).
-5. Правки: `tobiz_add_block` / `tobiz_update_block` / `tobiz_delete_block` / `tobiz_move_block`.
+6. Правки: `tobiz_add_block` / `tobiz_update_block` / `tobiz_delete_block` / `tobiz_move_block`.
    Всё это живёт **в черновике** в памяти сервера.
-6. Записать на сайт: `tobiz_save_page` — рендерит HTML блоков и отправляет `SaveBlocks`.
-7. Проверить результат по **публичной вёрстке**: `tobiz_audit_page` сразу делает desktop/mobile
+7. Записать на сайт: `tobiz_save_page` — рендерит HTML блоков и отправляет `SaveBlocks`.
+8. Проверить результат по **публичной вёрстке**: `tobiz_audit_page` сразу делает desktop/mobile
    снимки, читает computed styles и проверяет формы, кнопки, попапы, изображения и переполнение.
 
 ## Безопасный протокол сохранения

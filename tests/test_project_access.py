@@ -6,6 +6,13 @@ from types import SimpleNamespace
 from tobiz_mcp import errors
 from tobiz_mcp.config import Config
 from tobiz_mcp.service import Service
+from tobiz_mcp.tobiz.pages import Project
+
+
+def finish(coroutine):
+    with pytest.raises(StopIteration) as completed:
+        coroutine.send(None)
+    return completed.value.value
 
 
 def make_service(*, allowed: frozenset[str], strict: bool) -> Service:
@@ -57,12 +64,62 @@ def test_health_reports_project_access_mode() -> None:
     service.bridge = SimpleNamespace(available=False)
     service._counters = {}
 
-    with pytest.raises(StopIteration) as completed:
-        service.health().send(None)
-    result = completed.value.value
+    result = finish(service.health())
 
     assert result["project_access"] == {
         "strict": True,
         "allowlist_configured": True,
         "allowed_project_count": 2,
     }
+
+
+def test_projects_filters_entries_outside_allowlist(monkeypatch) -> None:
+    service = make_service(allowed=frozenset({"123"}), strict=True)
+    service._projects = None
+
+    async def ensure_session() -> None:
+        return None
+
+    async def panel_ajax(_action: str):
+        return SimpleNamespace(ok=True, payload={"html": "fixture"})
+
+    service.client = SimpleNamespace(
+        ensure_session=ensure_session,
+        panel_ajax=panel_ajax,
+    )
+    monkeypatch.setattr(
+        "tobiz_mcp.service.parse_projects",
+        lambda _html, _template: [Project("123"), Project("456")],
+    )
+
+    projects = finish(service.projects(refresh=True))
+
+    assert [project.project_id for project in projects] == ["123"]
+
+
+def test_projects_strict_empty_allowlist_stops_before_network() -> None:
+    service = make_service(allowed=frozenset(), strict=True)
+    service._projects = None
+    service.client = SimpleNamespace()
+
+    with pytest.raises(errors.TobizError) as caught:
+        finish(service.projects(refresh=True))
+
+    assert caught.value.code == errors.PROJECT_NOT_ALLOWED
+
+
+def test_onboarding_warns_for_personal_unrestricted_install() -> None:
+    service = make_service(allowed=frozenset(), strict=False)
+    service.client = SimpleNamespace(describe_session=lambda: {"present": True})
+    service.bridge = SimpleNamespace(available=True)
+
+    async def projects(refresh: bool = False):
+        return [Project("123")]
+
+    service.projects = projects
+
+    result = finish(service.onboarding_check())
+
+    assert result["ready"] is True
+    assert result["distribution_ready"] is False
+    assert result["next_action"] == "Включите строгую изоляцию для распространения"

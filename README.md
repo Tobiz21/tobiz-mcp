@@ -211,4 +211,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `TOBIZ_MAX_UPLOAD_MB` | лимит файла изображения (по умолчанию 10) |
 | `MCP_TRANSPORT` | `stdio` (по умолчанию) или `http` |
 | `MCP_HTTP_PORT`, `MCP_HTTP_TOKEN` | порт и токен для HTTP-транспорта |
+
+После подключения запустите `tobiz_onboarding_check`. Для личной тестовой установки достаточно
+`ready=true`; перед передачей другим пользователям требуется `distribution_ready=true`. Если передать
+`project_id` и `page_id`, инструмент также проверит безопасное пересохранение страницы в редакторе,
+не изменяя сайт.
 | `TOBIZ_LOG_LEVEL` | `INFO` по умолчанию, `WARNING` — тише |

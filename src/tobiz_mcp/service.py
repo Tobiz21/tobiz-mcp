@@ -57,6 +57,8 @@ class Service:
     # --- проекты и страницы ---
 
     async def projects(self, refresh: bool = False) -> list[Project]:
+        if self.config.require_project_allowlist and not self.config.allowed_project_ids:
+            self.check_allowed("")
         await self.client.ensure_session()
         if self._projects is not None and not refresh:
             return self._projects
@@ -66,8 +68,89 @@ class Service:
                                     "Проверьте сессию: tobiz_login")
         html = envelope.payload.get("html") or ""
         projects = parse_projects(str(html), self.config.lp_template)
+        if self.config.allowed_project_ids:
+            projects = [
+                project for project in projects
+                if project.project_id in self.config.allowed_project_ids
+            ]
         self._projects = projects
         return projects
+
+    async def onboarding_check(self, project_id: str | None = None,
+                               page_id: str | None = None) -> dict[str, Any]:
+        checks: list[dict[str, Any]] = []
+
+        def add(name: str, status: str, message: str) -> None:
+            checks.append({"name": name, "status": status, "message": message})
+
+        session = self.client.describe_session()
+        add("session", "pass" if session.get("present") else "fail",
+            "Сессия TOBIZ загружена" if session.get("present") else
+            "Нет сессии TOBIZ: выполните tobiz_login")
+        add("renderer", "pass" if self.bridge.available else "fail",
+            "Штатный рендерер доступен" if self.bridge.available else
+            "Штатный рендерер недоступен")
+
+        strict = self.config.require_project_allowlist
+        allowed = self.config.allowed_project_ids
+        if strict and allowed:
+            add("project_isolation", "pass",
+                f"Строгий режим включен, разрешено проектов: {len(allowed)}")
+        elif strict:
+            add("project_isolation", "fail",
+                "Строгий режим включен, но белый список проектов пуст")
+        else:
+            add("project_isolation", "warn",
+                "Строгий режим выключен; допустимо только для личной тестовой установки")
+
+        projects: list[Project] = []
+        try:
+            projects = await self.projects(refresh=True)
+            add("projects", "pass", f"Доступно проектов: {len(projects)}")
+        except errors.TobizError as exc:
+            add("projects", "fail", exc.message)
+
+        selected_project = str(project_id) if project_id else None
+        selected_page = str(page_id) if page_id else None
+        roundtrip: dict[str, Any] | None = None
+        if selected_project:
+            try:
+                project = await self.project(selected_project)
+                add("selected_project", "pass",
+                    f"Проект {project.project_id} доступен")
+            except errors.TobizError as exc:
+                add("selected_project", "fail", exc.message)
+
+        if selected_page:
+            if not selected_project:
+                add("selected_page", "fail", "Для page_id требуется project_id")
+            else:
+                try:
+                    await self.resolve_page(selected_project, selected_page)
+                    roundtrip = await self.editor_roundtrip(selected_project, selected_page)
+                    safe = bool(roundtrip.get("editor_safe")) and not roundtrip.get("would_save")
+                    add("editor_roundtrip", "pass" if safe else "fail",
+                        "Страница безопасна для штатного пересохранения" if safe else
+                        "Страница требует исправлений перед передачей пользователю")
+                except errors.TobizError as exc:
+                    add("selected_page", "fail", exc.message)
+
+        failures = [check for check in checks if check["status"] == "fail"]
+        warnings = [check for check in checks if check["status"] == "warn"]
+        return {
+            "ready": not failures,
+            "distribution_ready": not failures and not warnings,
+            "checks": checks,
+            "project_count": len(projects),
+            "selected_project_id": selected_project,
+            "selected_page_id": selected_page,
+            "editor_roundtrip": roundtrip,
+            "next_action": (
+                "Исправьте проверки со статусом fail" if failures else
+                "Включите строгую изоляцию для распространения" if warnings else
+                "Установка готова к работе"
+            ),
+        }
 
     async def project(self, project_id: str | None = None, refresh: bool = False) -> Project:
         projects = await self.projects(refresh=refresh)
@@ -1154,6 +1237,9 @@ class Service:
                 "block_geometry_detection",
                 "design_passport_selection",
                 "editor_roundtrip_check",
+                "safe_page_backups",
+                "onboarding_readiness_check",
+                "strict_project_isolation",
                 "quality_page_pipeline",
                 "compact_quality_blueprint",
                 "quality_recipe_coverage",
