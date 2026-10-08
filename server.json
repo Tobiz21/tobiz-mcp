@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.tobiz21/tobiz-mcp",
+  "name": "io.github.Tobiz21/tobiz-mcp",
   "title": "TOBIZ MCP",
   "description": "Create, edit and audit TOBIZ websites, pages, blocks, articles and products.",
   "repository": {
     "url": "https://github.com/Tobiz21/tobiz-mcp",
     "source": "github"
   },
-  "version": "0.9.0-beta.1",
+  "version": "0.9.0-beta.2",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1",
+      "identifier": "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2",
       "transport": {
         "type": "stdio"
       },

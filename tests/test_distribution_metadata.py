@@ -29,12 +29,12 @@ def test_readme_marks_docker_as_supported_distribution() -> None:
 
 def test_server_manifest_matches_public_container() -> None:
     manifest = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == "io.github.tobiz21/tobiz-mcp"
-    assert manifest["version"] == "0.9.0-beta.1"
+    assert manifest["name"] == "io.github.Tobiz21/tobiz-mcp"
+    assert manifest["version"] == "0.9.0-beta.2"
     assert manifest["repository"]["url"] == PUBLIC_REPOSITORY
     package = manifest["packages"][0]
     assert package["registryType"] == "oci"
-    assert package["identifier"] == "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1"
+    assert package["identifier"] == "ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2"
     variables = {item["name"]: item for item in package["environmentVariables"]}
     assert variables["TOBIZ_PASSWORD"]["isSecret"] is True
     assert variables["TOBIZ_ALLOWED_PROJECT_IDS"]["isRequired"] is True
@@ -42,4 +42,4 @@ def test_server_manifest_matches_public_container() -> None:
 
 def test_container_declares_registry_ownership() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert 'io.modelcontextprotocol.server.name="io.github.tobiz21/tobiz-mcp"' in dockerfile
+    assert 'io.modelcontextprotocol.server.name="io.github.Tobiz21/tobiz-mcp"' in dockerfile

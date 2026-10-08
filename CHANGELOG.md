@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0b2
+
+- Added a public multi-architecture GHCR image.
+- Added a validated `server.json` and GitHub OIDC publishing to the official MCP Registry.
+- Fixed public repository links and distribution checks.
+- Added security guidance for support requests and shared installations.
+
 ## 0.9.0b1
 
 - Добавлена защита от конфликтов между MCP и визуальным редактором.

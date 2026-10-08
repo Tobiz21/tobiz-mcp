@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tobiz-mcp"
-version = "0.9.0b1"
+version = "0.9.0b2"
 description = "MCP-сервер для управления сайтами конструктора TOBIZ через его внутренние эндпоинты"
 readme = "README.md"
 requires-python = ">=3.11"

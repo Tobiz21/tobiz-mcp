@@ -5,7 +5,7 @@ MCP-клиенту) читать и менять сайты — проекты, 
 
 Репозиторий: <https://github.com/Tobiz21/tobiz-mcp>
 
-Docker-образ: `ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1`
+Docker-образ: `ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2`
 
 ## Короткая инструкция для ИИ
 
@@ -40,8 +40,8 @@ docker run --rm -it --entrypoint tobiz-mcp-configure \
 После публикации образа локальную сборку можно заменить на:
 
 ```bash
-docker pull ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1
-docker tag ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.1 tobiz-mcp
+docker pull ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2
+docker tag ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2 tobiz-mcp
 ```
 
 Мастер скрыто запросит пароль, включит строгую изоляцию и разрешит MCP работать только с
