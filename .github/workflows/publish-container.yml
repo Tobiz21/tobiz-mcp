@@ -22,7 +22,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: tobiz21/tobiz-mcp
   RELEASE_TAG: 0.9.0-beta.1
 
 jobs:
