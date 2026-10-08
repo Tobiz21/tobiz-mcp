@@ -36,7 +36,12 @@ def service(tmp_path: Path) -> Service:
     return instance
 
 
-@pytest.mark.asyncio
+def finish(coroutine):
+    with pytest.raises(StopIteration) as completed:
+        coroutine.send(None)
+    return completed.value.value
+
+
 @pytest.mark.parametrize(
     ("kind", "action", "entity", "id_name"),
     [
@@ -44,14 +49,14 @@ def service(tmp_path: Path) -> Service:
         ("item", "upload_image", "image", "item_id"),
     ],
 )
-async def test_module_upload_uses_vendor_entity(
+def test_module_upload_uses_vendor_entity(
     tmp_path: Path, kind: str, action: str, entity: str, id_name: str
 ) -> None:
     instance = service(tmp_path)
-    result = await instance.module_upload_image(
+    result = finish(instance.module_upload_image(
         "432776", kind, "99", content_base64=base64.b64encode(PNG).decode(),
         file_name="test.png",
-    )
+    ))
 
     call = instance.client.calls[0]
     assert call[2:6] == (action, entity, id_name, "99")

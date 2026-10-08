@@ -34,10 +34,11 @@ class FakeService:
             "safe_page_backups",
             "onboarding_readiness_check",
             "strict_project_isolation",
+            "local_privacy_safe_diagnostics",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")
-        return {"version": "0.8.0", "features": features}
+        return {"version": "0.9.0b1", "features": features}
 
 
 def test_release_passes_complete_strict_install(capsys) -> None:

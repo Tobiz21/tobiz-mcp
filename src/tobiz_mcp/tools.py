@@ -33,7 +33,8 @@ Id = Annotated[
 ]
 READ_TOOLS = {
     "tobiz_page_content", "tobiz_template_passport", "tobiz_prepare_template",
-    "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_onboarding_check",
+    "tobiz_login", "tobiz_session_status", "tobiz_health", "tobiz_diagnostics",
+    "tobiz_onboarding_check",
     "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
@@ -70,7 +71,9 @@ def _error(exc: Exception, started: float) -> dict[str, Any]:
                      "duration_ms": int((time.time() - started) * 1000)}}
 
 
-def wrap(func: Callable[..., Any]) -> Callable[..., Any]:
+def wrap(func: Callable[..., Any], *, tool_name: str = "",
+         metric_recorder: Callable[[str, bool, int, str | None], None] | None = None
+         ) -> Callable[..., Any]:
     """Оборачивает метод сервиса в конверт {ok, data|error, meta}.
 
     Важно: functools.wraps сохраняет сигнатуру исходной функции (`__wrapped__`), иначе MCP
@@ -82,10 +85,17 @@ def wrap(func: Callable[..., Any]) -> Callable[..., Any]:
         started = time.time()
         try:
             result = await func(*args, **kwargs)
+            duration_ms = int((time.time() - started) * 1000)
+            ok = not (isinstance(result, dict) and result.get("ok") is False)
+            if metric_recorder:
+                metric_recorder(tool_name, ok, duration_ms, None if ok else errors.INTERNAL)
             if isinstance(result, dict) and "ok" in result:
                 return result
             return _envelope(result, started)
         except Exception as exc:  # noqa: BLE001 — конверт нужен всегда
+            if metric_recorder:
+                code = exc.code if isinstance(exc, errors.TobizError) else errors.INTERNAL
+                metric_recorder(tool_name, False, int((time.time() - started) * 1000), code)
             return _error(exc, started)
 
     return wrapper
@@ -100,7 +110,9 @@ def register(mcp: Any, service: Service) -> list[str]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             if read_only and name not in READ_TOOLS:
                 return func
-            mcp.tool(name=name, description=description)(wrap(func))
+            recorder = getattr(service, "record_tool_metric", None)
+            mcp.tool(name=name, description=description)(
+                wrap(func, tool_name=name, metric_recorder=recorder))
             registered.append(name)
             return func
         return decorator
@@ -122,6 +134,13 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Версия сервиса, режимы, состояние сессии, доступность рендерера, счётчики ошибок.")
     async def tobiz_health() -> dict[str, Any]:
         return await service.health()
+
+    @tool("tobiz_diagnostics",
+          "Локальный обезличенный технический отчет: агрегаты вызовов и ошибок, длительность, "
+          "состояние сессии/рендерера, число резервных копий и операций аудита. Не содержит "
+          "пароли, cookie или содержимое страниц и ничего не отправляет наружу.")
+    async def tobiz_diagnostics() -> dict[str, Any]:
+        return service.diagnostics()
 
     @tool("tobiz_onboarding_check",
           "Безопасная проверка подключения перед началом работы: сессия, рендерер, изоляция "

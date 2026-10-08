@@ -42,6 +42,7 @@ class Service:
         self.drafts = DraftStore()
         self._projects: list[Project] | None = None
         self._counters = {"auth_relogin": 0, "upstream_error": 0, "render_failed": 0}
+        self._tool_metrics: dict[str, dict[str, Any]] = {}
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -1206,6 +1207,87 @@ class Service:
 
     # --- журнал ---
 
+    def record_tool_metric(self, tool: str, ok: bool, duration_ms: int,
+                           error_code: str | None = None) -> None:
+        metric = self._tool_metrics.setdefault(tool, {
+            "calls": 0,
+            "errors": 0,
+            "total_ms": 0,
+            "max_ms": 0,
+            "error_codes": {},
+        })
+        metric["calls"] += 1
+        metric["total_ms"] += duration_ms
+        metric["max_ms"] = max(metric["max_ms"], duration_ms)
+        if not ok:
+            metric["errors"] += 1
+            code = error_code or errors.INTERNAL
+            metric["error_codes"][code] = metric["error_codes"].get(code, 0) + 1
+
+    def tool_metrics(self) -> dict[str, Any]:
+        metrics: dict[str, Any] = {}
+        for tool, source in sorted(getattr(self, "_tool_metrics", {}).items()):
+            calls = int(source.get("calls", 0))
+            metrics[tool] = {
+                "calls": calls,
+                "errors": int(source.get("errors", 0)),
+                "average_ms": round(source.get("total_ms", 0) / calls) if calls else 0,
+                "max_ms": int(source.get("max_ms", 0)),
+                "error_codes": dict(source.get("error_codes", {})),
+            }
+
+        return metrics
+
+    def diagnostics(self) -> dict[str, Any]:
+        metrics = self.tool_metrics()
+        audit_summary: dict[str, int] = {}
+        audit_records = 0
+        audit_path = self.config.audit_dir / "audit.jsonl"
+        try:
+            if audit_path.exists():
+                lines = audit_path.read_text(encoding="utf-8").splitlines()[-500:]
+                for line in lines:
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    tool = str(record.get("tool") or "unknown")
+                    audit_summary[tool] = audit_summary.get(tool, 0) + 1
+                    audit_records += 1
+        except OSError:
+            pass
+
+        backup_root = self.config.audit_dir / "backups"
+        try:
+            backup_files = sum(1 for path in backup_root.rglob("*.json") if path.is_file()) \
+                if backup_root.exists() else 0
+        except OSError:
+            backup_files = 0
+
+        return {
+            "privacy": {
+                "remote_telemetry": False,
+                "contains_credentials": False,
+                "contains_page_content": False,
+                "scope": "local_aggregates_only",
+            },
+            "runtime": {
+                "read_only": self.config.read_only,
+                "dry_run": self.config.dry_run,
+                "strict_project_isolation": self.config.require_project_allowlist,
+                "allowed_project_count": len(self.config.allowed_project_ids),
+                "renderer_available": self.bridge.available,
+                "session_present": bool(self.client.describe_session().get("present")),
+            },
+            "tool_metrics": metrics,
+            "audit": {
+                "records_scanned": audit_records,
+                "operations": dict(sorted(audit_summary.items())),
+            },
+            "backups": {"files": backup_files},
+            "counters": dict(self._counters),
+        }
+
     async def audit(self, tool: str, project_id: str, page_id: str | None = None,
                     block_id: str | None = None, extra: dict[str, Any] | None = None) -> None:
         record = {
@@ -1240,6 +1322,7 @@ class Service:
                 "safe_page_backups",
                 "onboarding_readiness_check",
                 "strict_project_isolation",
+                "local_privacy_safe_diagnostics",
                 "quality_page_pipeline",
                 "compact_quality_blueprint",
                 "quality_recipe_coverage",
@@ -1256,4 +1339,5 @@ class Service:
             "assets_dir": str(self.config.assets_dir),
             "renderer_available": self.bridge.available,
             "counters": dict(self._counters),
+            "tool_metrics": self.tool_metrics(),
         }

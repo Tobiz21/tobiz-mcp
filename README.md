@@ -138,6 +138,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | Инструмент | Что делает |
 | --- | --- |
 | `tobiz_login`, `tobiz_session_status`, `tobiz_health` | вход, состояние сессии, диагностика |
+| `tobiz_onboarding_check`, `tobiz_diagnostics` | готовность установки и локальный обезличенный отчет поддержки |
 | `tobiz_list_projects` | проекты (сайты) аккаунта |
 | `tobiz_list_pages` | страницы проекта |
 | `tobiz_page_summary` | компактная карта страницы: порядок блоков, короткий текст, SEO-подсказка |

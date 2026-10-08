@@ -219,7 +219,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     with pytest.raises(StopIteration) as completed:
         service.health().send(None)
     result = completed.value.value
-    assert result['version'] == '0.8.0'
+    assert result['version'] == '0.9.0b1'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']
@@ -248,8 +248,13 @@ def test_hash_and_duplicates():
     assert prepare(draft, [], expected_hash=fingerprint(draft))[1] == []
 
 
-@pytest.mark.asyncio
-async def test_preview_then_one_save():
+def finish(coroutine):
+    with pytest.raises(StopIteration) as completed:
+        coroutine.send(None)
+    return completed.value.value
+
+
+def test_preview_then_one_save():
     draft = sample()
     store = DraftStore()
     store.put(draft)
@@ -266,18 +271,17 @@ async def test_preview_then_one_save():
     register(MCP(), service)
     arguments = dict(project_id='1', page_id='2', expected_hash=fingerprint(draft),
                      edits=[{'block_id': '3', 'path': '/title', 'value': 'New'}])
-    result = await functions['tobiz_apply_content'](**arguments)
+    result = finish(functions['tobiz_apply_content'](**arguments))
     assert result['ok'] and result['data']['preview']
     assert store.get('1', '2') == draft
     service.save_page.assert_not_called()
-    result = await functions['tobiz_apply_content'](**arguments, apply=True, save=True)
+    result = finish(functions['tobiz_apply_content'](**arguments, apply=True, save=True))
     assert result['ok'] and result['data']['saved']
     assert store.get('1', '2').blocks['3'].values['title'] == 'New'
     service.save_page.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_build_from_template_previews_then_runs_one_save_and_audit():
+def test_build_from_template_previews_then_runs_one_save_and_audit():
     source = sample()
     target = copy.deepcopy(source)
     target.project_id, target.page_id = '9', '10'
@@ -301,15 +305,15 @@ async def test_build_from_template_previews_then_runs_one_save_and_audit():
             return capture
     register(MCP(), service)
     recipe = {'types': ['130'], 'slots': [{'block_index': 0, 'path': '/title', 'value': 'Built'}]}
-    preview = await functions['tobiz_build_from_template'](
+    preview = finish(functions['tobiz_build_from_template'](
         source_project_id='1', source_page_id='2', target_project_id='9',
-        title='New site', recipe=recipe, replacement_image='gray.png')
+        title='New site', recipe=recipe, replacement_image='gray.png'))
     assert preview['ok'] and preview['data']['preview']
     service.copy_page.assert_not_awaited()
-    result = await functions['tobiz_build_from_template'](
+    result = finish(functions['tobiz_build_from_template'](
         source_project_id='1', source_page_id='2', target_project_id='9',
         title='New site', recipe=recipe, replacement_image='gray.png',
-        source_terms=['old topic'], seo={'dir': 'new-site'}, apply=True)
+        source_terms=['old topic'], seo={'dir': 'new-site'}, apply=True))
     assert result['ok'] and result['data']['audit']['verdict'] == 'ready'
     service.copy_page.assert_awaited_once()
     service.save_page.assert_awaited_once()
