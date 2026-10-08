@@ -5,6 +5,7 @@
   python -m tobiz_mcp.selftest --catalog <pid>   # сводка по библиотеке блоков проекта
   python -m tobiz_mcp.selftest --render-check <pid>  # рендер блоков страницы против вёрстки
   python -m tobiz_mcp.selftest --page <page_id> [--project <pid>]
+  python -m tobiz_mcp.selftest --release <page_id> --project <pid>
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import json
 import sys
 from typing import Any
 
-from . import log
+from . import errors, log
 from .config import Config
 from .service import Service
 
@@ -93,6 +94,41 @@ async def cmd_page(service: Service, project_id: str | None, page_id: str) -> in
     return 0
 
 
+async def cmd_release(service: Service, project_id: str | None, page_id: str) -> int:
+    if not project_id:
+        raise errors.TobizError(
+            errors.BAD_ARGUMENT,
+            "Для release-проверки обязателен --project",
+            "Укажите --project PROJECT_ID вместе с --release PAGE_ID",
+        )
+    readiness = await service.onboarding_check(project_id, page_id)
+    backups = service.list_page_backups(project_id, page_id)
+    health = await service.health()
+    required_features = {
+        "editor_roundtrip_check",
+        "safe_page_backups",
+        "onboarding_readiness_check",
+        "strict_project_isolation",
+    }
+    missing_features = sorted(required_features - set(health.get("features", [])))
+    report = {
+        "release_ready": bool(readiness.get("distribution_ready")) and not missing_features,
+        "version": health.get("version"),
+        "project_id": project_id,
+        "page_id": page_id,
+        "readiness": readiness,
+        "backup_storage": {
+            "available": True,
+            "existing_backups": len(backups.get("backups", [])),
+            "note": "Первая копия создается автоматически перед реальным сохранением",
+        },
+        "required_features": sorted(required_features),
+        "missing_features": missing_features,
+    }
+    _print(report)
+    return 0 if report["release_ready"] else 1
+
+
 async def _run(args: argparse.Namespace) -> int:
     config = Config.from_env()
     log.setup(config.log_level)
@@ -108,6 +144,8 @@ async def _run(args: argparse.Namespace) -> int:
             return await cmd_render_check(service, args.project, args.render_check)
         if args.page:
             return await cmd_page(service, args.project, args.page)
+        if args.release:
+            return await cmd_release(service, args.project, args.release)
         _print({"usage": __doc__})
         return 2
     finally:
@@ -121,10 +159,15 @@ def main() -> int:
     parser.add_argument("--catalog", action="store_true", help="сводка по библиотеке блоков")
     parser.add_argument("--render-check", metavar="PAGE_ID", help="рендер блоков страницы")
     parser.add_argument("--page", metavar="PAGE_ID", help="состав страницы")
+    parser.add_argument("--release", metavar="PAGE_ID",
+                        help="полная приемка установки перед передачей пользователю")
     parser.add_argument("--project", metavar="PROJECT_ID", default=None, help="project_id")
     args = parser.parse_args()
     try:
         return asyncio.run(_run(args))
+    except errors.TobizError as exc:
+        _print({"ok": False, "error": exc.to_dict()})
+        return 2
     except KeyboardInterrupt:
         return 130
 

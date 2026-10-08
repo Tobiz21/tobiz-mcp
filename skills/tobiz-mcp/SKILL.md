@@ -68,6 +68,8 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
    в аргументы командной строки.
 3. После подключения обязательно запусти `tobiz_onboarding_check`. Не начинай работу при
    `ready=false`; не передавай установку другому пользователю при `distribution_ready=false`.
+4. Перед выдачей установки запусти `tobiz-mcp-selftest --release PAGE_ID --project PROJECT_ID`.
+   Передавай MCP пользователю только при коде завершения `0` и `release_ready=true` в JSON-отчете.
 
 ## Что пишет сразу, а что нет
 

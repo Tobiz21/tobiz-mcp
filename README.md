@@ -222,4 +222,14 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 `ready=true`; перед передачей другим пользователям требуется `distribution_ready=true`. Если передать
 `project_id` и `page_id`, инструмент также проверит безопасное пересохранение страницы в редакторе,
 не изменяя сайт.
+
+Финальная приемка перед выдачей установки пользователю:
+
+```bash
+docker run --rm --entrypoint tobiz-mcp-selftest --env-file .env \
+  -v tobiz-session:/data/session -v tobiz-assets:/data/assets -v tobiz-audit:/data/audit \
+  tobiz-mcp --release PAGE_ID --project PROJECT_ID
+```
+
+Команда возвращает код `0` только при `release_ready=true`; отчет печатается в JSON и подходит для CI.
 | `TOBIZ_LOG_LEVEL` | `INFO` по умолчанию, `WARNING` — тише |
