@@ -6,7 +6,7 @@ on:
     paths:
       - .github/workflows/clean-install.yml
       - server.json
-      - scripts/clean-install-smoke.sh
+      - scripts/mcp-smoke.py
   workflow_dispatch:
 
 permissions:
@@ -56,3 +56,8 @@ jobs:
         run: |
           docker run --rm --entrypoint tobiz-mcp-configure \
             ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2 --help
+      - name: Verify real MCP handshake and tool discovery
+        run: |
+          docker run --rm --entrypoint python \
+            -v "$PWD/scripts/mcp-smoke.py:/tmp/mcp-smoke.py:ro" \
+            ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2 /tmp/mcp-smoke.py

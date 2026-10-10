@@ -110,6 +110,7 @@ async function inspect(page, forbiddenTerms = []) {
           background: fill.slice(0,3), surface: surface.slice(0,3) } : null;
       }).filter(Boolean).slice(0, 100);
     const blockIssues = [];
+    const buttonSelector = 'a.btn1,a.btn2,a.btn3,a.btn4,a.btn5,button,input[type=submit],input[type=button]';
     for (const block of [...document.querySelectorAll('[id^="b_"]')].filter(visible)) {
       const inner = block.querySelector(':scope > .section_inner');
       if (!inner) continue;
@@ -121,6 +122,38 @@ async function inspect(page, forbiddenTerms = []) {
       if (innerWidth >= 1100) {
         const footerCols = children.filter(item => ['logo','address-and-ua','phone-and-address'].some(name => item.el.classList.contains(name)));
         if (footerCols.length === 3 && Math.max(...footerCols.map(x => x.rect.top)) - Math.min(...footerCols.map(x => x.rect.top)) > 80) blockIssues.push({ block: block.id, code: 'footer_columns_stacked_desktop' });
+      }
+      const groups = [...inner.querySelectorAll('*')].filter(parent => {
+        const cards = [...parent.children].filter(visible);
+        if (cards.length < 2 || cards.length > 6) return false;
+        if (!cards.every(card => card.querySelector(buttonSelector))) return false;
+        const rects = cards.map(card => card.getBoundingClientRect());
+        const widths = rects.map(rect => rect.width);
+        const sameWidth = Math.max(...widths) - Math.min(...widths) <= Math.max(...widths) * .2;
+        const sameRow = Math.max(...rects.map(rect => rect.top)) - Math.min(...rects.map(rect => rect.top)) <= 12;
+        return sameWidth && sameRow;
+      });
+      for (const group of groups) {
+        const cards = [...group.children].filter(visible);
+        const rects = cards.map(card => card.getBoundingClientRect());
+        const heights = rects.map(rect => rect.height);
+        if (Math.max(...heights) - Math.min(...heights) > 24) {
+          blockIssues.push({ block: block.id, code: 'card_heights_misaligned',
+            difference: Math.round(Math.max(...heights) - Math.min(...heights)) });
+        }
+        const visibleButtons = cards.map(card => [...card.querySelectorAll(buttonSelector)].find(visible)).filter(Boolean);
+        if (visibleButtons.length >= 2) {
+          const tops = visibleButtons.map(button => button.getBoundingClientRect().top);
+          if (Math.max(...tops) - Math.min(...tops) > 18) {
+            blockIssues.push({ block: block.id, code: 'card_buttons_misaligned',
+              difference: Math.round(Math.max(...tops) - Math.min(...tops)) });
+          }
+        }
+        cards.forEach(card => {
+          const hidden = [...card.querySelectorAll(buttonSelector)].filter(button => !visible(button));
+          hidden.forEach(button => blockIssues.push({ block: block.id, code: 'card_button_hidden_initially',
+            button: ref(button) }));
+        });
       }
     }
     const bodyText = document.body.innerText.replace(/\s+/g, ' ');

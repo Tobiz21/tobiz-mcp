@@ -219,7 +219,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     with pytest.raises(StopIteration) as completed:
         service.health().send(None)
     result = completed.value.value
-    assert result['version'] == '0.9.0b1'
+    assert result['version'] == '0.9.0b2'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']

@@ -35,6 +35,13 @@ jobs:
         run: python -m pip wheel --no-deps --wheel-dir dist .
       - name: Build supported Docker distribution
         run: docker build -t tobiz-mcp:ci .
+      - name: Verify recurring layout regressions are detected
+        run: |
+          printf '%s' '{"url":"file:///fixtures/misaligned-cards.html","output_dir":"/tmp/audit","viewports":["desktop"],"screenshot":false}' \
+            | docker run --rm -i --entrypoint node \
+                -v "$PWD/renderer/fixtures:/fixtures:ro" \
+                tobiz-mcp:ci /app/renderer/page-inspector.js > layout-report.json
+          python scripts/assert-layout-regression.py layout-report.json
       - name: Validate MCP Registry manifest
         run: |
           curl --fail --location --silent --show-error \
