@@ -225,6 +225,24 @@ def test_compact_audit_blocks_invalid_lead_form_structure():
     assert result['viewports']['mobile']['form_issues'] == 1
 
 
+def test_compact_audit_marks_content_integrity_for_review():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': [], 'integrity': {'issues': [
+            {'code': 'thin_page_content', 'characters': 240},
+            {'code': 'missing_contact_signal'},
+        ]}},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['status'] == 'pass'
+    assert result['verdict'] == 'review'
+    assert {item['code'] for item in result['warnings']} == {
+        'thin_page_content', 'missing_contact_signal'}
+
+
 def test_health_identifies_loaded_quality_features(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(
@@ -243,6 +261,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'quality_page_pipeline' in result['features']
     assert 'compact_quality_blueprint' in result['features']
     assert 'quality_recipe_coverage' in result['features']
+    assert 'content_integrity_detection' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

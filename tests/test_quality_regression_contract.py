@@ -12,3 +12,6 @@ def test_quality_regression_fixture_is_wired_into_ci():
     assert "missing_lead_name" in inspector
     assert "lead_name_not_first" in inspector
     assert "card_button_alignment_mismatch" in inspector
+    assert "thin_page_content" in inspector
+    assert "duplicate_headings" in inspector
+    assert "missing_contact_signal" in inspector

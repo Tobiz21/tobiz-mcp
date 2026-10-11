@@ -1326,6 +1326,7 @@ class Service:
                 "quality_page_pipeline",
                 "compact_quality_blueprint",
                 "quality_recipe_coverage",
+                "content_integrity_detection",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

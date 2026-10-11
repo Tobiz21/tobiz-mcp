@@ -171,6 +171,21 @@ async function inspect(page, forbiddenTerms = []) {
       }
     }
     const bodyText = document.body.innerText.replace(/\s+/g, ' ');
+    const headingTexts = [...document.querySelectorAll('h1,h2,h3,h4')]
+      .filter(visible).map(el => el.innerText.trim().replace(/\s+/g, ' ')).filter(Boolean);
+    const normalizedHeadings = headingTexts.map(value => value.toLocaleLowerCase('ru'));
+    const duplicateHeadings = [...new Set(normalizedHeadings.filter((value, index) => normalizedHeadings.indexOf(value) !== index))];
+    const visibleText = allVisible.filter(el => !el.children.length).map(el => el.innerText || '')
+      .join(' ').replace(/\s+/g, ' ').trim();
+    const hasContactSignal = !!document.querySelector('a[href^="tel:"],a[href^="mailto:"]') ||
+      /(?:\+?7|8)[\s(.-]*\d{3}[\s).-]*\d{3}[\s.-]*\d{2}[\s.-]*\d{2}|[\w.+-]+@[\w.-]+\.[a-zа-я]{2,}/iu.test(bodyText);
+    const contentIssues = [];
+    const h1Count = [...document.querySelectorAll('h1')].filter(visible).length;
+    if (h1Count === 0) contentIssues.push({ code: 'missing_primary_heading' });
+    if (h1Count > 1) contentIssues.push({ code: 'multiple_primary_headings', count: h1Count });
+    if (visibleText.length < 600) contentIssues.push({ code: 'thin_page_content', characters: visibleText.length });
+    if (duplicateHeadings.length) contentIssues.push({ code: 'duplicate_headings', items: duplicateHeadings.slice(0, 20) });
+    if (!hasContactSignal) contentIssues.push({ code: 'missing_contact_signal' });
     const termMatches = (forbiddenTerms || []).filter(term => typeof term === 'string' && term.trim()).map(term => {
       const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const matches = bodyText.match(new RegExp(escaped, 'giu')) || [];
@@ -186,7 +201,9 @@ async function inspect(page, forbiddenTerms = []) {
       interactions: { controls: links.length, broken: badButtons, forms, popups },
       layout: { horizontalOverflow: overflow, blockIssues, textContrast, buttonSurfaceContrast },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
-      content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref), termMatches },
+      content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),
+        termMatches, integrity: { textCharacters: visibleText.length, h1Count, headings: headingTexts.length,
+          hasContactSignal, issues: contentIssues } },
     };
   }, forbiddenTerms);
 }

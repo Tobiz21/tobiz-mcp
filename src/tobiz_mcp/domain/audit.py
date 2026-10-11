@@ -47,6 +47,8 @@ def compact(report):
         if content.get("termMatches"):
             critical.append({"viewport": name, "code": "source_content_leftover",
                              "items": content["termMatches"]})
+        for issue in (content.get("integrity") or {}).get("issues") or []:
+            warnings.append({"viewport": name, **issue})
         if (data.get("layout") or {}).get("textContrast"):
             critical.append({"viewport": name, "code": "text_contrast",
                              "items": (data.get("layout") or {})["textContrast"]})
