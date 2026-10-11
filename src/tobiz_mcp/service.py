@@ -1334,6 +1334,8 @@ class Service:
                 "native_card_layout_autofix",
                 "mobile_card_layout_detection",
                 "clipped_content_detection",
+                "native_layout_control_registry",
+                "safe_layout_repair",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

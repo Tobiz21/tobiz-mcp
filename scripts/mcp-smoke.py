@@ -18,6 +18,8 @@ REQUIRED_TOOLS = {
     "tobiz_audit_page",
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
+    "tobiz_layout_registry",
+    "tobiz_repair_layout",
 }
 
 

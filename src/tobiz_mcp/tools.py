@@ -15,6 +15,7 @@ from .domain import content as content_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
+from .domain import layout as layout_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -49,6 +50,7 @@ READ_TOOLS = {
     "tobiz_design_library", "tobiz_select_design",
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
+    "tobiz_layout_registry", "tobiz_repair_layout",
 }
 
 
@@ -174,6 +176,16 @@ def register(mcp: Any, service: Service) -> list[str]:
                                            page_id: Id = "") -> dict[str, Any]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         return await service.editor_roundtrip(project_id, page_id)
+
+    @tool("tobiz_layout_registry",
+          "Build a project-specific registry of native TOBIZ layout controls from vendor block metadata. "
+          "Returns controls, options, dependencies and whether each control is safe for automatic repair. "
+          "Optionally filter by type_ids. Read-only.")
+    async def tobiz_layout_registry(project_id: Id | None = None,
+                                    type_ids: list[Id] | None = None) -> dict[str, Any]:
+        project, _ = await service.pages(project_id)
+        types = await service.block_types(project.project_id)
+        return layout_domain.registry(types, [str(value) for value in type_ids or []])
 
     # --- чтение структуры ---
 
@@ -1067,6 +1079,80 @@ def register(mcp: Any, service: Service) -> list[str]:
                 and current.get("verdict") != "save_blocked",
                 "stopped_reason": stopped_reason, "editor_roundtrip": roundtrip_after,
                 "remaining_fix_plan": current.get("fix_plan", [])}
+
+    @tool("tobiz_repair_layout", "Repair block-level visual layout defects using only controls exposed "
+          "by the affected native TOBIZ block type. Handles equal card/button height, initially visible "
+          "buttons, hover animation and button alignment. Mobile controls are reported for review unless "
+          "their semantics are deterministic. Preview by default. Apply mode requires a clean editor-safe "
+          "draft, creates a backup, re-audits desktop/mobile and rolls back on a lower score or new critical issue.")
+    async def tobiz_repair_layout(project_id: Id | None = None, page_id: Id = "",
+                                  source_terms: list[str] | None = None,
+                                  apply: bool = False,
+                                  viewports: list[str] | None = None) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        if draft.has_changes:
+            raise errors.TobizError(
+                errors.CONFLICT, "В MCP-черновике есть несохраненные изменения",
+                "Сохраните или отмените их перед ремонтом верстки")
+        modes = viewports or ["desktop", "mobile"]
+        before_report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=modes,
+            forbidden_terms=source_terms)
+        before = audit_domain.compact(before_report)
+        types = await service.block_types(project_id)
+        candidate, changes, warnings = layout_domain.prepare(draft, before, types)
+        affected_types = sorted({item["type_id"] for item in changes})
+        result = {
+            "preview": not apply, "before": before, "safe_changes": changes,
+            "warnings": warnings, "affected_type_registry": layout_domain.registry(
+                types, affected_types)["types"] if affected_types else [],
+            "can_apply": bool(changes),
+        }
+        if not apply:
+            return result
+        if not changes:
+            return {**result, "preview": False, "applied": False,
+                    "stopped_reason": "no_safe_layout_fixes"}
+
+        service.drafts.put(candidate)
+        roundtrip = await service.editor_roundtrip(project_id, page_id)
+        if not roundtrip.get("editor_safe"):
+            service.drafts.put(draft)
+            return {**result, "preview": False, "applied": False,
+                    "stopped_reason": "editor_not_safe", "editor_roundtrip": roundtrip}
+        save = await service.save_page(project_id, page_id)
+        after_report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=modes,
+            forbidden_terms=source_terms)
+        after = audit_domain.compact(after_report)
+        before_score = before["quality_score"]["overall"]
+        after_score = after["quality_score"]["overall"]
+        before_critical = {(item.get("viewport"), item.get("code"))
+                           for item in before.get("critical") or []}
+        after_critical = {(item.get("viewport"), item.get("code"))
+                          for item in after.get("critical") or []}
+        new_critical = [
+            {"viewport": viewport, "code": code}
+            for viewport, code in sorted(after_critical - before_critical,
+                                         key=lambda item: (str(item[0]), str(item[1])))
+        ]
+        regressed = after_score < before_score or bool(new_critical)
+        rollback = None
+        if regressed:
+            backup_id = (save.get("backup") or {}).get("backup_id")
+            if backup_id:
+                rollback = await service.restore_page_backup(
+                    project_id, page_id, backup_id, confirm=True)
+        final_roundtrip = await service.editor_roundtrip(project_id, page_id)
+        return {**result, "preview": False, "applied": not regressed,
+                "stopped_reason": "regression_rolled_back" if regressed else "layout_repaired",
+                "backup": save.get("backup"), "before_score": before_score,
+                "after_score": after_score, "issue_delta": layout_domain.issue_count(after)
+                - layout_domain.issue_count(before), "new_critical": new_critical,
+                "after": after, "rollback": rollback, "editor_roundtrip": final_roundtrip}
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "

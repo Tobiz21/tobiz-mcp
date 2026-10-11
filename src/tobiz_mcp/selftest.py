@@ -112,6 +112,8 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "local_privacy_safe_diagnostics",
         "block_level_visual_evidence",
         "native_card_layout_autofix",
+        "native_layout_control_registry",
+        "safe_layout_repair",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {

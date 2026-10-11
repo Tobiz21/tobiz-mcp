@@ -380,6 +380,8 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'native_card_layout_autofix' in result['features']
     assert 'mobile_card_layout_detection' in result['features']
     assert 'clipped_content_detection' in result['features']
+    assert 'native_layout_control_registry' in result['features']
+    assert 'safe_layout_repair' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
@@ -557,3 +559,65 @@ def test_improve_page_rolls_back_when_score_decreases():
     assert data['stopped_reason'] == 'score_decreased_rolled_back'
     service.restore_page_backup.assert_awaited_once_with(
         '1', '2', 'before-improve', confirm=True)
+
+
+def layout_audit_report(*, extra_critical=False):
+    block_issues = [{"block": "b_1", "code": "card_buttons_misaligned", "difference": 30}]
+    if extra_critical:
+        block_issues.append({"block": "b_1", "code": "child_outside_container"})
+    return {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': block_issues,
+                   'visualIssues': [], 'textContrast': [], 'buttonSurfaceContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': [], 'integrity': {'issues': []}},
+        'interactions': {'broken': [], 'forms': [], 'usabilityIssues': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+
+
+def repair_service(draft, reports):
+    store = DraftStore()
+    store.put(draft)
+    block_type = SimpleNamespace(type_id='130', title='Cards', settings=[
+        {'name': 'flex_fix', 'type': 'checkbox', 'title': 'Выровнять по кнопке'},
+    ])
+    return SimpleNamespace(
+        config=SimpleNamespace(read_only=False, dry_run=False), drafts=store,
+        resolve_page=AsyncMock(return_value=('1', SimpleNamespace(title='Page'))),
+        draft=AsyncMock(return_value=draft), block_types=AsyncMock(return_value={'130': block_type}),
+        inspect_page=AsyncMock(side_effect=reports),
+        editor_roundtrip=AsyncMock(return_value={'editor_safe': True, 'warnings': []}),
+        save_page=AsyncMock(return_value={
+            'saved': True, 'backup': {'backup_id': 'before-layout-repair'}}),
+        restore_page_backup=AsyncMock(return_value={'restored': True}),
+    )
+
+
+def test_repair_layout_previews_native_changes_without_saving():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '130', {'flex_fix': 0}),
+    }, order=['1'])
+    service = repair_service(draft, [layout_audit_report()])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_repair_layout'](project_id='1', page_id='2'))
+    data = result['data']
+    assert data['preview'] is True and data['can_apply'] is True
+    assert data['safe_changes'][0]['path'] == '/flex_fix'
+    assert data['affected_type_registry'][0]['type_id'] == '130'
+    service.save_page.assert_not_awaited()
+
+
+def test_repair_layout_applies_and_rolls_back_new_critical_regression():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '130', {'flex_fix': 0}),
+    }, order=['1'])
+    service = repair_service(draft, [layout_audit_report(), layout_audit_report(extra_critical=True)])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_repair_layout'](
+        project_id='1', page_id='2', apply=True))
+    data = result['data']
+    assert data['applied'] is False
+    assert data['stopped_reason'] == 'regression_rolled_back'
+    assert data['new_critical'][0]['code'] == 'child_outside_container'
+    service.restore_page_backup.assert_awaited_once_with(
+        '1', '2', 'before-layout-repair', confirm=True)
