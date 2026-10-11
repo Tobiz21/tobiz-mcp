@@ -9,7 +9,9 @@ on:
       - server.json
       - renderer/**
       - src/**
+      - scripts/mcp-smoke.py
       - .github/workflows/publish-container.yml
+      - .github/workflows/clean-install.yml
   workflow_dispatch:
 
 permissions:

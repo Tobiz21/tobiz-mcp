@@ -1,12 +1,9 @@
 name: Clean installation smoke test
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/clean-install.yml
-      - server.json
-      - scripts/mcp-smoke.py
+  workflow_run:
+    workflows: ["Publish container"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -14,9 +11,12 @@ permissions:
 
 jobs:
   clean-install:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve TOBIZ MCP from the official Registry
         run: |
           python - <<'PY'
