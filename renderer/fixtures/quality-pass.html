@@ -12,7 +12,9 @@
     h2 { font-size: 32px; }
     p { max-width: 760px; }
     .grid { display: flex; gap: 24px; }
-    .card { flex: 1; min-height: 280px; padding: 28px; border: 1px solid #ddd; text-align: center; }
+    .card { display: flex; flex: 1; min-height: 280px; padding: 28px; border: 1px solid #ddd;
+      text-align: center; flex-direction: column; align-items: center; }
+    .card .btn1 { margin-top: auto; }
     .btn1, button { display: inline-flex; min-width: 160px; min-height: 48px; align-items: center;
       justify-content: center; padding: 12px 24px; border: 0; background: #a31324; color: white; }
     form { display: grid; gap: 16px; max-width: 540px; }

@@ -12,6 +12,7 @@ from tobiz_mcp.domain.audit import compact
 report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert report["ok"] is True
 summary = compact(report)
+print(json.dumps(summary, ensure_ascii=False, indent=2))
 assert summary["verdict"] == "ready", summary
 assert summary["quality_score"]["overall"] == 10.0, summary["quality_score"]
 assert summary["quality_score"]["meets_7_of_10"] is True
