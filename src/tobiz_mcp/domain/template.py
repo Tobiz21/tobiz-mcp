@@ -128,3 +128,35 @@ def prepare_template(draft, expected_hash=None):
                 warnings.append({"block_id": bid, "path": path, "code": "demo_content"})
 
     return candidate, changes, warnings
+
+
+def prepare_visual_fixes(draft, audit):
+    """Apply only unambiguous native controls supported by the affected block."""
+    candidate = copy.deepcopy(draft)
+    changes, warnings = [], []
+    evidence = audit.get("block_evidence") or {}
+    for block_id, issues in evidence.items():
+        block = candidate.blocks.get(str(block_id))
+        if not block or block.deleted:
+            continue
+        codes = {item.get("code") for item in issues}
+        values = block.values
+        if codes & {"card_heights_misaligned", "card_buttons_misaligned"}:
+            if "flex_fix" in values:
+                _set(block, "/flex_fix", 1, changes, "align_native_cards_and_buttons")
+            else:
+                warnings.append({"block_id": block_id, "code": "native_equal_height_control_missing"})
+        if "card_button_hidden_initially" in codes:
+            if "btn_up" in values:
+                _set(block, "/btn_up", 0, changes, "show_card_buttons_immediately")
+            if "btn_move" in values:
+                off = "none" if isinstance(values["btn_move"], str) else 0
+                _set(block, "/btn_move", off, changes, "disable_card_button_hover_animation")
+        if "card_button_alignment_mismatch" in codes:
+            if "btn_align" in values:
+                _set(block, "/btn_align", "center", changes, "center_buttons_with_centered_card_text")
+            else:
+                warnings.append({"block_id": block_id, "code": "native_button_alignment_control_missing"})
+        if "cards_not_stacked_mobile" in codes:
+            warnings.append({"block_id": block_id, "code": "mobile_layout_requires_block_specific_control"})
+    return candidate, changes, warnings

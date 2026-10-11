@@ -11,7 +11,7 @@ from tobiz_mcp.errors import TobizError
 from tobiz_mcp.tools import register
 from tobiz_mcp.service import Service
 from tobiz_mcp.domain.content import recipe_edits
-from tobiz_mcp.domain.template import prepare_template
+from tobiz_mcp.domain.template import prepare_template, prepare_visual_fixes
 
 
 def test_recipe_rebinds_ids_and_rejects_layout_mismatch():
@@ -68,6 +68,42 @@ def test_template_preparation_puts_name_before_phone_without_rebuilding_form():
     assert [item['type'] for item in candidate.blocks['1'].values['form1']] == [
         'text', 'phone', 'email', 'btn']
     assert changes[0]['reason'] == 'put_name_before_phone'
+    assert warnings == []
+
+
+def test_visual_preparation_uses_only_controls_present_on_affected_block():
+    draft = Draft('1', '2', blocks={
+        '10': DraftBlock('10', '130', {
+            'flex_fix': 0, 'btn_up': 1, 'btn_move': 1, 'btn_align': 'left'}),
+        '11': DraftBlock('11', '167', {'title': 'No matching controls'}),
+    }, order=['10', '11'])
+    audit = {'block_evidence': {
+        '10': [
+            {'code': 'card_heights_misaligned'},
+            {'code': 'card_buttons_misaligned'},
+            {'code': 'card_button_hidden_initially'},
+            {'code': 'card_button_alignment_mismatch'},
+        ],
+        '11': [{'code': 'card_buttons_misaligned'}],
+    }}
+    candidate, changes, warnings = prepare_visual_fixes(draft, audit)
+    assert candidate.blocks['10'].values == {
+        'flex_fix': 1, 'btn_up': 0, 'btn_move': 0, 'btn_align': 'center'}
+    assert draft.blocks['10'].values['flex_fix'] == 0
+    assert {item['reason'] for item in changes} == {
+        'align_native_cards_and_buttons', 'show_card_buttons_immediately',
+        'disable_card_button_hover_animation', 'center_buttons_with_centered_card_text'}
+    assert warnings == [{'block_id': '11', 'code': 'native_equal_height_control_missing'}]
+
+
+def test_visual_preparation_uses_none_for_select_button_animation():
+    draft = Draft('1', '2', blocks={
+        '10': DraftBlock('10', '130', {'btn_up': 1, 'btn_move': 'pulse'}),
+    }, order=['10'])
+    candidate, changes, warnings = prepare_visual_fixes(draft, {'block_evidence': {
+        '10': [{'code': 'card_button_hidden_initially'}]}})
+    assert candidate.blocks['10'].values == {'btn_up': 0, 'btn_move': 'none'}
+    assert len(changes) == 2
     assert warnings == []
 
 
@@ -298,7 +334,24 @@ def test_compact_audit_critical_error_caps_quality_below_five():
         'dimension': 'technical',
         'code': 'horizontal_overflow',
         'action': 'Исправить ширину или позиционирование элементов на мобильном экране.',
+        'block_ids': [],
     }
+
+
+def test_compact_audit_groups_visual_evidence_by_native_block():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'textContrast': [],
+                   'blockIssues': [
+                       {'block': 'b_42', 'code': 'card_buttons_misaligned', 'difference': 30}],
+                   'visualIssues': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['block_evidence']['42'][0]['code'] == 'card_buttons_misaligned'
+    assert result['fix_plan'][0]['block_ids'] == ['42']
 
 
 def test_health_identifies_loaded_quality_features(tmp_path):
@@ -323,6 +376,10 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'visual_consistency_detection' in result['features']
     assert 'explainable_quality_score' in result['features']
     assert 'safe_autonomous_page_improvement' in result['features']
+    assert 'block_level_visual_evidence' in result['features']
+    assert 'native_card_layout_autofix' in result['features']
+    assert 'mobile_card_layout_detection' in result['features']
+    assert 'clipped_content_detection' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

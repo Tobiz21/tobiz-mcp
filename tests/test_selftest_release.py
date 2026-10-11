@@ -35,6 +35,8 @@ class FakeService:
             "onboarding_readiness_check",
             "strict_project_isolation",
             "local_privacy_safe_diagnostics",
+            "block_level_visual_evidence",
+            "native_card_layout_autofix",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

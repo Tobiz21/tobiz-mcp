@@ -32,8 +32,11 @@ async function inspect(page, forbiddenTerms = []) {
       const s = getComputedStyle(el); const r = el.getBoundingClientRect();
       return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0 && r.width > 1 && r.height > 1;
     };
-    const ref = el => ({ tag: el.tagName.toLowerCase(), id: el.id || null,
-      classes: [...el.classList].slice(0, 5), text: (el.innerText || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 120) });
+    const ref = el => { const r = el.getBoundingClientRect(); const block = el.closest?.('[id^="b_"]'); return {
+      tag: el.tagName.toLowerCase(), id: el.id || null, block: block?.id || null,
+      classes: [...el.classList].slice(0, 5), text: (el.innerText || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+      rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
+    }; };
     const style = el => { const s = getComputedStyle(el); return {
       fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
       lineHeight: s.lineHeight, color: s.color, backgroundColor: s.backgroundColor,
@@ -184,6 +187,19 @@ async function inspect(page, forbiddenTerms = []) {
             button: ref(button) }));
         });
       }
+      if (innerWidth <= 600) {
+        const mobileRows = [...inner.querySelectorAll('*')].filter(parent => {
+          const items = [...parent.children].filter(visible);
+          if (items.length < 2 || items.length > 6) return false;
+          const rects = items.map(item => item.getBoundingClientRect());
+          const sameRow = Math.max(...rects.map(rect => rect.top)) - Math.min(...rects.map(rect => rect.top)) <= 12;
+          const cardLike = items.every((item, index) => rects[index].height >= 80 && rects[index].width >= 60 &&
+            ((item.innerText || '').trim().length >= 20 || item.querySelector('img,button,a.btn1,a.btn2,a.btn3,a.btn4,a.btn5')));
+          return sameRow && cardLike && rects.every(rect => rect.width < innerWidth * .48);
+        });
+        if (mobileRows.length) blockIssues.push({ block: block.id, code: 'cards_not_stacked_mobile',
+          groups: mobileRows.length, sample: ref(mobileRows[0]) });
+      }
     }
     const textElements = [...document.querySelectorAll('h1,h2,h3,h4,p,li,label,a,button')]
       .filter(el => visible(el) && el.innerText.trim());
@@ -207,6 +223,14 @@ async function inspect(page, forbiddenTerms = []) {
       });
     if (distortedImages.length) visualIssues.push({ code: 'image_aspect_distorted', count: distortedImages.length,
       items: distortedImages.slice(0, 20).map(ref) });
+    const clippedContent = allVisible.filter(el => {
+      if (!el.innerText?.trim() || ['BODY', 'HTML'].includes(el.tagName)) return false;
+      const s = getComputedStyle(el);
+      const clips = ['hidden', 'clip'].includes(s.overflow) || ['hidden', 'clip'].includes(s.overflowY);
+      return clips && el.children.length < 8 && el.scrollHeight > el.clientHeight + 4;
+    });
+    if (clippedContent.length) visualIssues.push({ code: 'content_clipped', count: clippedContent.length,
+      items: clippedContent.slice(0, 20).map(ref) });
     const usabilityIssues = [];
     if (innerWidth <= 600) {
       const smallTargets = [...document.querySelectorAll(buttonSelector)].filter(visible).filter(el => {
@@ -254,7 +278,9 @@ async function inspect(page, forbiddenTerms = []) {
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
       interactions: { controls: links.length, broken: badButtons, forms, popups, usabilityIssues },
-      layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast },
+      layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast,
+        blocks: visibleBlocks.map(item => ({ ...ref(item.el), top: Math.round(item.rect.top),
+          bottom: Math.round(item.rect.bottom) })) },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),
         termMatches, integrity: { textCharacters: visibleText.length, h1Count, headings: headingTexts.length,

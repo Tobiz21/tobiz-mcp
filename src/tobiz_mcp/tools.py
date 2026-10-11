@@ -960,7 +960,9 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     @tool("tobiz_improve_page", "Audit a TOBIZ page and iteratively apply only deterministic native "
           "fixes: broken anchors with an existing native form, empty/demo social links, gallery hover-only "
-          "labels, dark-form heading contrast and Name-before-Phone form order. Preview by default. "
+          "labels, dark-form heading contrast, Name-before-Phone form order, equal card/button height, "
+          "always-visible card buttons and centered buttons when the affected block exposes these controls. "
+          "Every visual defect is tied to its native block id. Preview by default. "
           "Apply mode requires an editor-safe clean draft, creates a backup on every save, re-audits after "
           "each cycle and automatically restores the backup if the quality score decreases.")
     async def tobiz_improve_page(project_id: Id | None = None, page_id: Id = "",
@@ -988,6 +990,10 @@ def register(mcp: Any, service: Service) -> list[str]:
         initial = audit_domain.compact(initial_report)
         candidate, planned, preparation_warnings = template_domain.prepare_template(
             draft, content_domain.fingerprint(draft))
+        candidate, visual_planned, visual_warnings = template_domain.prepare_visual_fixes(
+            candidate, initial)
+        planned.extend(visual_planned)
+        preparation_warnings.extend(visual_warnings)
         preview = {
             "preview": not apply,
             "target_score": target_score,
@@ -1020,6 +1026,10 @@ def register(mcp: Any, service: Service) -> list[str]:
                 project_id, page_id, refresh=True)
             improved, changes, warnings = template_domain.prepare_template(
                 current_draft, content_domain.fingerprint(current_draft))
+            improved, visual_changes, visual_warnings = template_domain.prepare_visual_fixes(
+                improved, current)
+            changes.extend(visual_changes)
+            warnings.extend(visual_warnings)
             if not changes:
                 stopped_reason = "no_more_safe_fixes"
                 break

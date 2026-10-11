@@ -49,6 +49,13 @@ jobs:
                 -v "$PWD/renderer/fixtures:/fixtures:ro" \
                 tobiz-mcp:ci /app/renderer/page-inspector.js > quality-report.json
           python scripts/assert-quality-regression.py quality-report.json
+      - name: Verify mobile cards and clipped content are detected
+        run: |
+          printf '%s' '{"url":"file:///fixtures/mobile-layout-failures.html","output_dir":"/tmp/audit","viewports":["mobile"],"screenshot":false}' \
+            | docker run --rm -i --entrypoint node \
+                -v "$PWD/renderer/fixtures:/fixtures:ro" \
+                tobiz-mcp:ci /app/renderer/page-inspector.js > mobile-layout-report.json
+          python scripts/assert-mobile-layout-regression.py mobile-layout-report.json
       - name: Verify recurring visual-system regressions are detected
         run: |
           printf '%s' '{"url":"file:///fixtures/visual-consistency-failures.html","output_dir":"/tmp/audit","viewports":["desktop"],"screenshot":false}' \

@@ -4,6 +4,7 @@
 TECHNICAL = {
     "horizontal_overflow", "broken_images", "page_errors", "console_errors",
     "child_outside_container", "footer_columns_stacked_desktop", "block_geometry",
+    "cards_not_stacked_mobile",
 }
 CONTENT = {
     "source_content_leftover", "missing_primary_heading", "multiple_primary_headings",
@@ -37,6 +38,8 @@ FIXES = {
     "card_image_ratios_inconsistent": "Привести изображения одной группы карточек к общей пропорции.",
     "excessive_section_gap": "Убрать случайный двойной отступ между секциями.",
     "image_aspect_distorted": "Сохранить пропорции изображения через штатный режим кадрирования.",
+    "content_clipped": "Увеличить высоту или сократить содержимое штатными настройками блока.",
+    "cards_not_stacked_mobile": "Включить штатное мобильное складывание карточек в одну колонку.",
     "field_missing_accessible_label": "Добавить полю понятную подпись или placeholder.",
     "tap_target_too_small": "Увеличить мобильную кнопку минимум до 40x40px.",
     "heading_level_skipped": "Исправить последовательность уровней H1-H6.",
@@ -87,11 +90,21 @@ def _fix_plan(critical, warnings, limit=8):
             if code in seen:
                 continue
             seen.add(code)
+            blocks = []
+            raw = item.get("item") or item
+            block = raw.get("block")
+            if block:
+                blocks.append(str(block).removeprefix("b_"))
+            for nested in item.get("items") or []:
+                nested_block = nested.get("block") if isinstance(nested, dict) else None
+                if nested_block:
+                    blocks.append(str(nested_block).removeprefix("b_"))
             result.append({
                 "priority": "must_fix" if severity == "critical" else "improve",
                 "dimension": _dimension(code),
                 "code": code,
                 "action": FIXES.get(code, "Проверить элемент на desktop и mobile и исправить штатными настройками TOBIZ."),
+                "block_ids": sorted(set(blocks)),
             })
             if len(result) >= limit:
                 return result
@@ -182,8 +195,24 @@ def compact(report):
     actionable_warnings = [item for item in warnings if item.get("code") not in advisory_codes]
     verdict = "save_blocked" if critical else "review" if actionable_warnings else "ready"
     quality_score = _score(critical, warnings, advisory_codes)
+    evidence = {}
+    for severity, items in (("critical", critical), ("warning", warnings)):
+        for item in items:
+            raw = item.get("item") or item
+            targets = [raw] + [nested for nested in item.get("items") or []
+                               if isinstance(nested, dict)]
+            for target in targets:
+                block = target.get("block")
+                if not block:
+                    continue
+                block_id = str(block).removeprefix("b_")
+                record = {"severity": severity, "viewport": item.get("viewport"),
+                          "code": item.get("code"), "details": target}
+                if record not in evidence.setdefault(block_id, []):
+                    evidence[block_id].append(record)
     return {"status": "pass" if not critical else "needs_fix", "verdict": verdict,
             "url": report.get("url"),
             "quality_score": quality_score,
             "fix_plan": _fix_plan(critical, warnings),
+            "block_evidence": evidence,
             "critical": critical, "warnings": warnings, "viewports": viewports}
