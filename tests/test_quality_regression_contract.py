@@ -15,3 +15,9 @@ def test_quality_regression_fixture_is_wired_into_ci():
     assert "thin_page_content" in inspector
     assert "duplicate_headings" in inspector
     assert "missing_contact_signal" in inspector
+    assert "visual-consistency-failures.html" in workflow
+    assert "assert-visual-consistency-regression.py" in workflow
+    assert "card_image_ratios_inconsistent" in inspector
+    assert "too_many_font_families" in inspector
+    assert "text_too_small" in inspector
+    assert "excessive_section_gap" in inspector

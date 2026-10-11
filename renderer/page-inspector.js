@@ -116,6 +116,7 @@ async function inspect(page, forbiddenTerms = []) {
           background: fill.slice(0,3), surface: surface.slice(0,3) } : null;
       }).filter(Boolean).slice(0, 100);
     const blockIssues = [];
+    const visualIssues = [];
     const buttonSelector = 'a.btn1,a.btn2,a.btn3,a.btn4,a.btn5,button,input[type=submit],input[type=button]';
     for (const block of [...document.querySelectorAll('[id^="b_"]')].filter(visible)) {
       const inner = block.querySelector(':scope > .section_inner');
@@ -143,6 +144,14 @@ async function inspect(page, forbiddenTerms = []) {
         const cards = [...group.children].filter(visible);
         const rects = cards.map(card => card.getBoundingClientRect());
         const heights = rects.map(rect => rect.height);
+        const cardImages = cards.map(card => [...card.querySelectorAll('img')].find(visible));
+        if (cardImages.every(Boolean)) {
+          const ratios = cardImages.map(image => { const r = image.getBoundingClientRect(); return r.width / r.height; });
+          if (Math.max(...ratios) - Math.min(...ratios) > .25) {
+            visualIssues.push({ block: block.id, code: 'card_image_ratios_inconsistent',
+              ratios: ratios.map(value => Number(value.toFixed(2))) });
+          }
+        }
         if (Math.max(...heights) - Math.min(...heights) > 24) {
           blockIssues.push({ block: block.id, code: 'card_heights_misaligned',
             difference: Math.round(Math.max(...heights) - Math.min(...heights)) });
@@ -169,6 +178,21 @@ async function inspect(page, forbiddenTerms = []) {
             button: ref(button) }));
         });
       }
+    }
+    const textElements = [...document.querySelectorAll('h1,h2,h3,h4,p,li,label,a,button')]
+      .filter(el => visible(el) && el.innerText.trim());
+    const fontFamilies = [...new Set(textElements.map(el => getComputedStyle(el).fontFamily.split(',')[0]
+      .replace(/["']/g, '').trim().toLowerCase()).filter(Boolean))];
+    if (fontFamilies.length > 3) visualIssues.push({ code: 'too_many_font_families', items: fontFamilies });
+    const tinyText = textElements.filter(el => parseFloat(getComputedStyle(el).fontSize) < 12);
+    if (tinyText.length) visualIssues.push({ code: 'text_too_small', count: tinyText.length,
+      items: tinyText.slice(0, 20).map(ref) });
+    const visibleBlocks = [...document.querySelectorAll('[id^="b_"]')].filter(visible)
+      .map(el => ({ el, rect: el.getBoundingClientRect() })).sort((a, b) => a.rect.top - b.rect.top);
+    for (let index = 1; index < visibleBlocks.length; index += 1) {
+      const gap = visibleBlocks[index].rect.top - visibleBlocks[index - 1].rect.bottom;
+      if (gap > 220) visualIssues.push({ code: 'excessive_section_gap',
+        previous: visibleBlocks[index - 1].el.id, next: visibleBlocks[index].el.id, gap: Math.round(gap) });
     }
     const bodyText = document.body.innerText.replace(/\s+/g, ' ');
     const headingTexts = [...document.querySelectorAll('h1,h2,h3,h4')]
@@ -199,7 +223,7 @@ async function inspect(page, forbiddenTerms = []) {
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
       interactions: { controls: links.length, broken: badButtons, forms, popups },
-      layout: { horizontalOverflow: overflow, blockIssues, textContrast, buttonSurfaceContrast },
+      layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),
         termMatches, integrity: { textCharacters: visibleText.length, h1Count, headings: headingTexts.length,

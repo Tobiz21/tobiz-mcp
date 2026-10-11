@@ -934,6 +934,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["quality_gates"] = [
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
             "complete_recipe_before_copy", "desktop_mobile_audit", "editor_roundtrip_safe",
+            "content_integrity_review", "visual_consistency_review",
         ]
         if apply:
             page = result.get("page") or {}

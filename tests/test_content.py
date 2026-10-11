@@ -243,6 +243,25 @@ def test_compact_audit_marks_content_integrity_for_review():
         'thin_page_content', 'missing_contact_signal'}
 
 
+def test_compact_audit_marks_visual_inconsistency_for_review():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': [],
+                   'visualIssues': [
+                       {'code': 'too_many_font_families', 'items': ['arial', 'georgia', 'impact', 'verdana']},
+                       {'code': 'text_too_small', 'count': 2},
+                   ]},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['status'] == 'pass'
+    assert result['verdict'] == 'review'
+    assert {item['code'] for item in result['warnings']} == {
+        'too_many_font_families', 'text_too_small'}
+
+
 def test_health_identifies_loaded_quality_features(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(
@@ -262,6 +281,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'compact_quality_blueprint' in result['features']
     assert 'quality_recipe_coverage' in result['features']
     assert 'content_integrity_detection' in result['features']
+    assert 'visual_consistency_detection' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

@@ -1327,6 +1327,7 @@ class Service:
                 "compact_quality_blueprint",
                 "quality_recipe_coverage",
                 "content_integrity_detection",
+                "visual_consistency_detection",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -58,6 +58,8 @@ def compact(report):
         for issue in (data.get("layout") or {}).get("blockIssues") or []:
             critical.append({"viewport": name, "code": issue.get("code", "block_geometry"),
                              "item": issue})
+        for issue in (data.get("layout") or {}).get("visualIssues") or []:
+            warnings.append({"viewport": name, **issue})
         for item in broken:
             critical.append({"viewport": name, "code": item.get("issue", "broken_interaction"),
                              "item": item})
