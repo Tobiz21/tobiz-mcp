@@ -83,8 +83,14 @@ async function inspect(page, forbiddenTerms = []) {
         if (formVisible && !visible(el)) issues.push('not_visible');
         return issues.length ? { ...ref(el), issues, color: s.color, backgroundColor: s.backgroundColor, placeholder } : null;
       }).filter(Boolean);
+      const meaning = el => `${el.type || ''} ${el.name || ''} ${el.id || ''} ${el.placeholder || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+      const phoneIndex = fields.findIndex(el => el.type === 'tel' || /(телефон|phone|tel)/i.test(meaning(el)));
+      const nameIndex = fields.findIndex(el => /(имя|ваше имя|name|fio|фио)/i.test(meaning(el)));
+      const formIssues = [];
+      if (phoneIndex >= 0 && nameIndex < 0) formIssues.push('missing_lead_name');
+      if (phoneIndex >= 0 && nameIndex > phoneIndex) formIssues.push('lead_name_not_first');
       return { ...ref(form), visible: formVisible, action: form.getAttribute('action'), method: form.method, fields: fields.length,
-        submits: submits.length, canSubmit: fields.length > 0 && submits.length > 0, issues: fieldIssues };
+        submits: submits.length, canSubmit: fields.length > 0 && submits.length > 0, issues: fieldIssues, formIssues };
     });
     const popups = [...document.querySelectorAll('[class*=popup], [class*=modal], [role=dialog]')].map(el => ({ ...ref(el), visible: visible(el) })).slice(0, 100);
     const allVisible = [...document.body.querySelectorAll('*')].filter(visible);
@@ -150,6 +156,14 @@ async function inspect(page, forbiddenTerms = []) {
           }
         }
         cards.forEach(card => {
+          const cardButton = [...card.querySelectorAll(buttonSelector)].find(visible);
+          if (cardButton && getComputedStyle(card).textAlign === 'center') {
+            const cardRect = card.getBoundingClientRect();
+            const buttonRect = cardButton.getBoundingClientRect();
+            const offset = Math.abs((cardRect.left + cardRect.width / 2) - (buttonRect.left + buttonRect.width / 2));
+            if (offset > 18) blockIssues.push({ block: block.id, code: 'card_button_alignment_mismatch',
+              offset: Math.round(offset), button: ref(cardButton) });
+          }
           const hidden = [...card.querySelectorAll(buttonSelector)].filter(button => !visible(button));
           hidden.forEach(button => blockIssues.push({ block: block.id, code: 'card_button_hidden_initially',
             button: ref(button) }));

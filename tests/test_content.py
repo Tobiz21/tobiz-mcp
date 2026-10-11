@@ -208,6 +208,23 @@ def test_compact_audit_blocks_button_matching_section_surface():
     assert result['critical'][0]['code'] == 'button_surface_contrast'
 
 
+def test_compact_audit_blocks_invalid_lead_form_structure():
+    report = {'url': 'https://example.test', 'viewports': {'mobile': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': [{
+            'visible': True, 'issues': [],
+            'formIssues': ['missing_lead_name'],
+        }]},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['verdict'] == 'save_blocked'
+    assert result['critical'][0]['code'] == 'lead_form_structure'
+    assert result['viewports']['mobile']['form_issues'] == 1
+
+
 def test_health_identifies_loaded_quality_features(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(

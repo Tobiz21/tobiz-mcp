@@ -33,6 +33,12 @@ def compact(report):
                 target.append({"viewport": name, "code": "form_contrast",
                                "visible": bool(form.get("visible")), "issues": issues})
                 form_issues.extend(issues)
+            semantic_issues = form.get("formIssues") or []
+            if semantic_issues:
+                target = critical if form.get("visible") else warnings
+                target.append({"viewport": name, "code": "lead_form_structure",
+                               "visible": bool(form.get("visible")), "issues": semantic_issues})
+                form_issues.extend(semantic_issues)
         if document.get("overflowX"):
             critical.append({"viewport": name, "code": "horizontal_overflow", "items": overflow})
         if media.get("brokenImages"):

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { margin: 0; font: 16px Arial, sans-serif; }
+    .section_inner { width: 700px; margin: 0 auto; padding: 30px; }
+    #b_dark { background: #1d1d1d; color: #222; }
+    #b_dark p { color: #222; }
+    #b_dark button { color: white; background: #1d1d1d; border: 0; padding: 12px 24px; }
+    input { color: white; background: white; }
+  </style>
+</head>
+<body>
+  <section id="b_dark"><div class="section_inner">
+    <h2>Нечитаемый заголовок</h2>
+    <p>Этот текст должен быть замечен проверкой контраста.</p>
+    <button>Невидимая кнопка</button>
+    <form>
+      <input type="tel" name="phone" placeholder="Телефон">
+      <button type="submit">Отправить</button>
+    </form>
+    <form>
+      <input type="tel" name="phone2" placeholder="Телефон">
+      <input name="name" placeholder="Имя">
+      <button type="submit">Отправить</button>
+    </form>
+    <img src="missing-quality-fixture.jpg" alt="Намеренно битое изображение">
+  </div></section>
+</body>
+</html>

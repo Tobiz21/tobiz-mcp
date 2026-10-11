@@ -15,6 +15,7 @@ expected = {
     "card_heights_misaligned",
     "card_buttons_misaligned",
     "card_button_hidden_initially",
+    "card_button_alignment_mismatch",
 }
 missing = expected - codes
 assert not missing, f"Layout audit missed regressions: {sorted(missing)}; got {sorted(codes)}"
