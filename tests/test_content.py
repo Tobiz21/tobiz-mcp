@@ -55,6 +55,22 @@ def test_template_preparation_is_native_and_atomic():
     assert warnings[0]['code'] == 'demo_content'
 
 
+def test_template_preparation_puts_name_before_phone_without_rebuilding_form():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
+            {'type': 'text', 'title': 'Ваше имя', 'required': 0},
+            {'type': 'email', 'title': 'Email'},
+            {'type': 'btn', 'title': 'Отправить'},
+        ]}),
+    }, order=['1'])
+    candidate, changes, warnings = prepare_template(draft, fingerprint(draft))
+    assert [item['type'] for item in candidate.blocks['1'].values['form1']] == [
+        'text', 'phone', 'email', 'btn']
+    assert changes[0]['reason'] == 'put_name_before_phone'
+    assert warnings == []
+
+
 def sample():
     return Draft('1', '2', blocks={'3': DraftBlock('3', '130', {
         'title': 'Old', 'image': 'old.jpg', 'items': [{'title': 'Item', 'image': 'null.png'}],
@@ -306,6 +322,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'content_integrity_detection' in result['features']
     assert 'visual_consistency_detection' in result['features']
     assert 'explainable_quality_score' in result['features']
+    assert 'safe_autonomous_page_improvement' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
@@ -400,3 +417,86 @@ def test_build_from_template_previews_then_runs_one_save_and_audit():
     service.copy_page.assert_awaited_once()
     service.save_page.assert_awaited_once()
     service.inspect_page.assert_awaited_once()
+
+
+def audit_report(*, overflow=False):
+    return {'url': 'https://example.test', 'viewports': {'mobile': {
+        'document': {'overflowX': overflow},
+        'layout': {'horizontalOverflow': [{'tag': 'div'}] if overflow else [],
+                   'blockIssues': [], 'visualIssues': [], 'textContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': [], 'integrity': {'issues': []}},
+        'interactions': {'broken': [], 'forms': [], 'usabilityIssues': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+
+
+def improve_service(draft, reports):
+    store = DraftStore()
+    store.put(draft)
+    return SimpleNamespace(
+        config=SimpleNamespace(read_only=False, dry_run=False), drafts=store,
+        resolve_page=AsyncMock(return_value=('1', SimpleNamespace(title='Page'))),
+        draft=AsyncMock(return_value=draft),
+        inspect_page=AsyncMock(side_effect=reports),
+        editor_roundtrip=AsyncMock(return_value={'editor_safe': True, 'warnings': []}),
+        save_page=AsyncMock(return_value={
+            'saved': True, 'backup': {'backup_id': 'before-improve'}}),
+        restore_page_backup=AsyncMock(return_value={'restored': True}),
+    )
+
+
+def registered_functions(service):
+    functions = {}
+    class MCP:
+        def tool(self, name, description):
+            def capture(fn):
+                functions[name] = fn
+                return fn
+            return capture
+    register(MCP(), service)
+    return functions
+
+
+def test_improve_page_previews_safe_native_changes_without_saving():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '165', {'show_vk': 1, 'link_vk': ''}),
+    }, order=['1'])
+    service = improve_service(draft, [audit_report()])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_improve_page'](project_id='1', page_id='2'))
+    assert result['ok'] and result['data']['preview']
+    assert result['data']['can_apply'] is True
+    assert result['data']['safe_changes'][0]['reason'] == 'hide_empty_social'
+    service.save_page.assert_not_awaited()
+
+
+def test_improve_page_applies_one_safe_cycle_and_keeps_editor_safe():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '165', {'show_vk': 1, 'link_vk': ''}),
+    }, order=['1'])
+    service = improve_service(draft, [audit_report(), audit_report()])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_improve_page'](
+        project_id='1', page_id='2', apply=True, max_cycles=1))
+    data = result['data']
+    assert result['ok'] and data['applied'] is True
+    assert data['stopped_reason'] == 'target_reached'
+    assert data['cycles'][0]['backup']['backup_id'] == 'before-improve'
+    assert data['editor_roundtrip']['editor_safe'] is True
+    service.save_page.assert_awaited_once()
+
+
+def test_improve_page_rolls_back_when_score_decreases():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '165', {'show_vk': 1, 'link_vk': ''}),
+    }, order=['1'])
+    service = improve_service(draft, [audit_report(), audit_report(overflow=True)])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_improve_page'](
+        project_id='1', page_id='2', apply=True, max_cycles=1))
+    data = result['data']
+    assert data['rolled_back'] is True
+    assert data['applied'] is False
+    assert data['stopped_reason'] == 'score_decreased_rolled_back'
+    service.restore_page_backup.assert_awaited_once_with(
+        '1', '2', 'before-improve', confirm=True)

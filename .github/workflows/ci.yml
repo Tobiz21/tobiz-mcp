@@ -56,6 +56,13 @@ jobs:
                 -v "$PWD/renderer/fixtures:/fixtures:ro" \
                 tobiz-mcp:ci /app/renderer/page-inspector.js > visual-report.json
           python scripts/assert-visual-consistency-regression.py visual-report.json
+      - name: Verify known-good landing page stays clean
+        run: |
+          printf '%s' '{"url":"file:///fixtures/quality-pass.html","output_dir":"/tmp/audit","viewports":["desktop","mobile"],"screenshot":false}' \
+            | docker run --rm -i --entrypoint node \
+                -v "$PWD/renderer/fixtures:/fixtures:ro" \
+                tobiz-mcp:ci /app/renderer/page-inspector.js > quality-pass-report.json
+          python scripts/assert-quality-pass.py quality-pass-report.json
       - name: Validate MCP Registry manifest
         run: |
           curl --fail --location --silent --show-error \

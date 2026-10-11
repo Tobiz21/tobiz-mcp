@@ -26,3 +26,5 @@ def test_quality_regression_fixture_is_wired_into_ci():
     assert "tap_target_too_small" in inspector
     assert "heading_level_skipped" in inspector
     assert "missing_primary_action" in inspector
+    assert "quality-pass.html" in workflow
+    assert "assert-quality-pass.py" in workflow

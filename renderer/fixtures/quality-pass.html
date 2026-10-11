@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Качественный штатный лендинг</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #202020; background: #fff; font: 16px/1.5 Arial, sans-serif; }
+    section { padding: 64px 20px; }
+    .section_inner { width: min(1100px, 100%); margin: 0 auto; }
+    h1 { max-width: 760px; font-size: 46px; line-height: 1.15; }
+    h2 { font-size: 32px; }
+    p { max-width: 760px; }
+    .grid { display: flex; gap: 24px; }
+    .card { flex: 1; min-height: 280px; padding: 28px; border: 1px solid #ddd; text-align: center; }
+    .btn1, button { display: inline-flex; min-width: 160px; min-height: 48px; align-items: center;
+      justify-content: center; padding: 12px 24px; border: 0; background: #a31324; color: white; }
+    form { display: grid; gap: 16px; max-width: 540px; }
+    input { min-height: 48px; padding: 12px; color: #202020; background: #fff; border: 1px solid #777; }
+    @media (max-width: 600px) { .grid { display: block; } .card + .card { margin-top: 16px; } h1 { font-size: 34px; } }
+  </style>
+</head>
+<body>
+  <section id="b_cover"><div class="section_inner">
+    <h1>Создаем понятный сайт для услуг и записей клиентов</h1>
+    <p>На первом экране посетитель сразу понимает предложение, видит основную пользу и может перейти к следующему шагу. Структура собрана штатными средствами конструктора и остается доступной владельцу для самостоятельного редактирования.</p>
+    <a class="btn1" href="#contact">Обсудить проект</a>
+  </div></section>
+  <section id="b_benefits"><div class="section_inner">
+    <h2>Что получает клиент</h2>
+    <div class="grid">
+      <article class="card"><h3>Понятная структура</h3><p>Каждая секция отвечает на отдельный вопрос: что предлагается, как проходит работа, почему компании можно доверять и какое действие выполнить дальше.</p><a class="btn1" href="#contact">Подробнее</a></article>
+      <article class="card"><h3>Удобная редактура</h3><p>Тексты, изображения, кнопки и формы сохраняются в штатных настройках TOBIZ. Для обычного обновления страницы владельцу не требуется программирование.</p><a class="btn1" href="#contact">Подробнее</a></article>
+      <article class="card"><h3>Проверка качества</h3><p>Перед публикацией страница проверяется на компьютере и телефоне: контраст, формы, ссылки, переполнение, изображения и безопасность пересохранения.</p><a class="btn1" href="#contact">Подробнее</a></article>
+    </div>
+  </div></section>
+  <section id="b_process"><div class="section_inner">
+    <h2>Как проходит работа</h2>
+    <p>Сначала мы определяем аудиторию и главное действие, затем выбираем подходящую штатную структуру, готовим содержательные тексты и распределяем изображения по ролям. После сборки выполняется аудит публичной страницы. Все критические ошибки исправляются до передачи, а рекомендации фиксируются отдельным планом.</p>
+  </div></section>
+  <section id="b_contact"><div class="section_inner" id="contact">
+    <h2>Обсудить задачу</h2>
+    <p>Оставьте имя и телефон или позвоните по номеру <a href="tel:+79000000000">+7 900 000-00-00</a>.</p>
+    <form><label for="lead-name">Имя</label><input id="lead-name" name="name" placeholder="Ваше имя">
+      <label for="lead-phone">Телефон</label><input id="lead-phone" type="tel" name="phone" placeholder="Ваш телефон">
+      <button type="submit">Отправить заявку</button></form>
+  </div></section>
+</body>
+</html>

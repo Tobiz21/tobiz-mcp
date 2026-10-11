@@ -1329,6 +1329,7 @@ class Service:
                 "content_integrity_detection",
                 "visual_consistency_detection",
                 "explainable_quality_score",
+                "safe_autonomous_page_improvement",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

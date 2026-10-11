@@ -17,6 +17,7 @@ REQUIRED_TOOLS = {
     "tobiz_save_page",
     "tobiz_audit_page",
     "tobiz_editor_roundtrip_check",
+    "tobiz_improve_page",
 }
 
 

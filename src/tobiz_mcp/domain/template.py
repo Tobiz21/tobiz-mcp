@@ -43,6 +43,10 @@ def _walk(value, path=""):
             yield from _walk(child, f"{path}/{index}")
 
 
+def _field_text(item):
+    return " ".join(str(item.get(key, "")) for key in ("type", "title", "placeholder", "name")).lower()
+
+
 def prepare_template(draft, expected_hash=None):
     """Return a prepared copy, deterministic fixes, and unresolved warnings."""
     if expected_hash and expected_hash != fingerprint(draft):
@@ -91,6 +95,21 @@ def prepare_template(draft, expected_hash=None):
 
         forms = {key for key, child in values.items()
                  if re.fullmatch(r"form\d+", key) and isinstance(child, list) and child}
+        for form_key in sorted(forms):
+            form = values[form_key]
+            phone_index = next((index for index, item in enumerate(form)
+                                if isinstance(item, dict)
+                                and (item.get("type") == "phone"
+                                     or re.search(r"телефон|phone|\btel\b", _field_text(item)))), -1)
+            name_index = next((index for index, item in enumerate(form)
+                               if isinstance(item, dict)
+                               and item.get("type") in {"text", "name"}
+                               and re.search(r"имя|name|фио", _field_text(item))), -1)
+            if phone_index >= 0 and name_index > phone_index:
+                reordered = copy.deepcopy(form)
+                name_field = reordered.pop(name_index)
+                reordered.insert(phone_index, name_field)
+                _set(block, f"/{form_key}", reordered, changes, "put_name_before_phone")
         for path, key, child in list(_walk(values)):
             if not re.fullmatch(r"btn\d+", key) or not isinstance(child, dict):
                 continue

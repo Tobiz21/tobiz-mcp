@@ -91,6 +91,10 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 6. Разбирай `fix_plan` сверху вниз: сначала все `must_fix`, затем `improve`. Страница достигла
    рабочего порога только при `quality_score.meets_7_of_10=true`; это не заменяет просмотр
    снимков, а делает решение воспроизводимым.
+7. Для уже собранной страницы сначала используй `tobiz_improve_page(apply=false)`. Автоматически
+   применяй только `safe_changes`; смысловые тексты, изображения и композицию из
+   `human_fix_plan` исправляй отдельным осознанным проходом. После применения принимай результат
+   только при отсутствии отката и `editor_roundtrip.editor_safe=true`.
 
 Список изученных референсов и причины, по которым к ним стоит обращаться, находится в
 [reference-sites.md](references/reference-sites.md).

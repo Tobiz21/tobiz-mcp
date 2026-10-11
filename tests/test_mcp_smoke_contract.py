@@ -12,4 +12,5 @@ def test_public_smoke_covers_protocol_and_core_tools() -> None:
     assert "session.list_tools()" in script
     assert "tobiz_save_page" in script
     assert "tobiz_audit_page" in script
+    assert "tobiz_improve_page" in script
     assert "mcp-smoke.py:/tmp/mcp-smoke.py:ro" in workflow

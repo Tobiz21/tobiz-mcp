@@ -48,6 +48,7 @@ READ_TOOLS = {
     "tobiz_list_page_backups",
     "tobiz_design_library", "tobiz_select_design",
     "tobiz_editor_roundtrip_check",
+    "tobiz_improve_page",
 }
 
 
@@ -956,6 +957,106 @@ def register(mcp: Any, service: Service) -> list[str]:
             result["quality_verdict"] = "preview"
             result["quality_score"] = None
         return result
+
+    @tool("tobiz_improve_page", "Audit a TOBIZ page and iteratively apply only deterministic native "
+          "fixes: broken anchors with an existing native form, empty/demo social links, gallery hover-only "
+          "labels, dark-form heading contrast and Name-before-Phone form order. Preview by default. "
+          "Apply mode requires an editor-safe clean draft, creates a backup on every save, re-audits after "
+          "each cycle and automatically restores the backup if the quality score decreases.")
+    async def tobiz_improve_page(project_id: Id | None = None, page_id: Id = "",
+                                 target_score: float = 7.0, max_cycles: int = 2,
+                                 source_terms: list[str] | None = None,
+                                 apply: bool = False,
+                                 viewports: list[str] | None = None) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        if not 0 <= target_score <= 10:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "target_score must be between 0 and 10")
+        if not 1 <= max_cycles <= 3:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "max_cycles must be between 1 and 3")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        if draft.has_changes:
+            raise errors.TobizError(
+                errors.CONFLICT,
+                "В MCP-черновике есть несохраненные изменения",
+                "Сохраните или отмените их перед автоматическим улучшением",
+            )
+        initial_report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=viewports or ["desktop", "mobile"],
+            forbidden_terms=source_terms)
+        initial = audit_domain.compact(initial_report)
+        candidate, planned, preparation_warnings = template_domain.prepare_template(
+            draft, content_domain.fingerprint(draft))
+        preview = {
+            "preview": not apply,
+            "target_score": target_score,
+            "max_cycles": max_cycles,
+            "initial": initial,
+            "safe_changes": planned,
+            "preparation_warnings": preparation_warnings,
+            "human_fix_plan": initial.get("fix_plan", []),
+        }
+        if not apply:
+            preview["can_apply"] = bool(planned)
+            preview["stopped_reason"] = "preview"
+            return preview
+
+        roundtrip_before = await service.editor_roundtrip(project_id, page_id)
+        if not roundtrip_before.get("editor_safe"):
+            return {**preview, "preview": False, "applied": False,
+                    "stopped_reason": "editor_not_safe", "editor_roundtrip": roundtrip_before}
+        if not planned:
+            return {**preview, "preview": False, "applied": False, "cycles": [],
+                    "final": initial, "achieved_target": initial["quality_score"]["overall"] >= target_score,
+                    "stopped_reason": "no_safe_automatic_fixes"}
+
+        cycles = []
+        current = initial
+        rolled_back = False
+        stopped_reason = "cycle_limit"
+        for cycle_number in range(1, max_cycles + 1):
+            current_draft = draft if cycle_number == 1 else await service.draft(
+                project_id, page_id, refresh=True)
+            improved, changes, warnings = template_domain.prepare_template(
+                current_draft, content_domain.fingerprint(current_draft))
+            if not changes:
+                stopped_reason = "no_more_safe_fixes"
+                break
+            service.drafts.put(improved)
+            save = await service.save_page(project_id, page_id)
+            report = await service.inspect_page(
+                project_id, page_id, screenshot=True, viewports=viewports or ["desktop", "mobile"],
+                forbidden_terms=source_terms)
+            after = audit_domain.compact(report)
+            before_score = current["quality_score"]["overall"]
+            after_score = after["quality_score"]["overall"]
+            cycle = {"cycle": cycle_number, "changes": changes, "warnings": warnings,
+                     "backup": save.get("backup"), "score_before": before_score,
+                     "score_after": after_score, "audit": after}
+            if after_score < before_score:
+                backup_id = (save.get("backup") or {}).get("backup_id")
+                if backup_id:
+                    cycle["rollback"] = await service.restore_page_backup(
+                        project_id, page_id, backup_id, confirm=True)
+                    rolled_back = True
+                    stopped_reason = "score_decreased_rolled_back"
+                    cycles.append(cycle)
+                    current = initial if cycle_number == 1 else current
+                    break
+            cycles.append(cycle)
+            current = after
+            if after_score >= target_score and after.get("verdict") != "save_blocked":
+                stopped_reason = "target_reached"
+                break
+
+        roundtrip_after = await service.editor_roundtrip(project_id, page_id)
+        return {**preview, "preview": False, "applied": bool(cycles) and not rolled_back,
+                "cycles": cycles, "rolled_back": rolled_back, "final": current,
+                "achieved_target": current["quality_score"]["overall"] >= target_score
+                and current.get("verdict") != "save_blocked",
+                "stopped_reason": stopped_reason, "editor_roundtrip": roundtrip_after,
+                "remaining_fix_plan": current.get("fix_plan", [])}
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "
