@@ -854,7 +854,9 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "changed_fields": len(changed),
                 "template_changes": first_changes + last_changes,
                 "warnings": first_warnings + last_warnings,
-                "save": save_result, "seo": seo_result, "audit": summary}
+                "save": save_result, "seo": seo_result, "audit": summary,
+                "quality_score": summary.get("quality_score"),
+                "fix_plan": summary.get("fix_plan", [])}
 
     @tool("tobiz_build_quality_page", "Brief-driven native TOBIZ quality pipeline. Selects a verified "
           "installed template, enforces the 30% Flex limit, returns a photo-slot manifest in preview, "
@@ -943,6 +945,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             roundtrip = await service.editor_roundtrip(target_project, target_page_id)
             result["editor_roundtrip"] = roundtrip
             audit_verdict = (result.get("audit") or {}).get("verdict", "review")
+            result["quality_score"] = (result.get("audit") or {}).get("quality_score")
             if audit_verdict == "save_blocked" or not roundtrip.get("editor_safe"):
                 result["quality_verdict"] = "save_blocked"
             elif audit_verdict != "ready" or roundtrip.get("warnings"):
@@ -951,6 +954,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                 result["quality_verdict"] = "ready"
         else:
             result["quality_verdict"] = "preview"
+            result["quality_score"] = None
         return result
 
     @tool("tobiz_delete_page",
@@ -1042,8 +1046,9 @@ def register(mcp: Any, service: Service) -> list[str]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         return await service.inspect_page(project_id, page_id, screenshot=True, viewports=viewports)
 
-    @tool("tobiz_audit_summary", "Compact desktop/mobile audit: critical errors, actionable "
-          "warnings and screenshot paths. Does not submit forms or change the site.")
+    @tool("tobiz_audit_summary", "Compact desktop/mobile audit with critical errors, warnings, "
+          "screenshots, an explainable 0-10 score across four dimensions and a prioritized fix plan. "
+          "Does not submit forms or change the site.")
     async def tobiz_audit_summary(project_id: Id | None = None, page_id: Id = "",
                                   viewports: list[str] | None = None,
                                   source_terms: list[str] | None = None) -> dict[str, Any]:

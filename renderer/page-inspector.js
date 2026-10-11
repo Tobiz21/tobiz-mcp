@@ -89,8 +89,14 @@ async function inspect(page, forbiddenTerms = []) {
       const formIssues = [];
       if (phoneIndex >= 0 && nameIndex < 0) formIssues.push('missing_lead_name');
       if (phoneIndex >= 0 && nameIndex > phoneIndex) formIssues.push('lead_name_not_first');
+      const accessibilityIssues = fields.filter(el => {
+        const id = el.id && globalThis.CSS?.escape ? CSS.escape(el.id) : el.id;
+        return !el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby') &&
+          !el.placeholder && !el.closest('label') && !(id && document.querySelector(`label[for="${id}"]`));
+      }).map(el => ({ code: 'field_missing_accessible_label', field: ref(el) }));
       return { ...ref(form), visible: formVisible, action: form.getAttribute('action'), method: form.method, fields: fields.length,
-        submits: submits.length, canSubmit: fields.length > 0 && submits.length > 0, issues: fieldIssues, formIssues };
+        submits: submits.length, canSubmit: fields.length > 0 && submits.length > 0, issues: fieldIssues, formIssues,
+        accessibilityIssues };
     });
     const popups = [...document.querySelectorAll('[class*=popup], [class*=modal], [role=dialog]')].map(el => ({ ...ref(el), visible: visible(el) })).slice(0, 100);
     const allVisible = [...document.body.querySelectorAll('*')].filter(visible);
@@ -194,6 +200,21 @@ async function inspect(page, forbiddenTerms = []) {
       if (gap > 220) visualIssues.push({ code: 'excessive_section_gap',
         previous: visibleBlocks[index - 1].el.id, next: visibleBlocks[index].el.id, gap: Math.round(gap) });
     }
+    const distortedImages = [...document.images].filter(img => visible(img) && img.naturalWidth > 0 && img.naturalHeight > 0)
+      .filter(img => {
+        const r = img.getBoundingClientRect(); const fit = getComputedStyle(img).objectFit;
+        return (fit === 'fill' || !fit) && Math.abs((r.width / r.height) - (img.naturalWidth / img.naturalHeight)) > .2;
+      });
+    if (distortedImages.length) visualIssues.push({ code: 'image_aspect_distorted', count: distortedImages.length,
+      items: distortedImages.slice(0, 20).map(ref) });
+    const usabilityIssues = [];
+    if (innerWidth <= 600) {
+      const smallTargets = [...document.querySelectorAll(buttonSelector)].filter(visible).filter(el => {
+        const r = el.getBoundingClientRect(); return r.width < 40 || r.height < 40;
+      });
+      if (smallTargets.length) usabilityIssues.push({ code: 'tap_target_too_small', count: smallTargets.length,
+        items: smallTargets.slice(0, 20).map(ref) });
+    }
     const bodyText = document.body.innerText.replace(/\s+/g, ' ');
     const headingTexts = [...document.querySelectorAll('h1,h2,h3,h4')]
       .filter(visible).map(el => el.innerText.trim().replace(/\s+/g, ' ')).filter(Boolean);
@@ -210,6 +231,16 @@ async function inspect(page, forbiddenTerms = []) {
     if (visibleText.length < 600) contentIssues.push({ code: 'thin_page_content', characters: visibleText.length });
     if (duplicateHeadings.length) contentIssues.push({ code: 'duplicate_headings', items: duplicateHeadings.slice(0, 20) });
     if (!hasContactSignal) contentIssues.push({ code: 'missing_contact_signal' });
+    const headingLevels = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter(visible)
+      .map(el => Number(el.tagName.slice(1)));
+    const skippedLevels = [];
+    for (let index = 1; index < headingLevels.length; index += 1) {
+      if (headingLevels[index] > headingLevels[index - 1] + 1) skippedLevels.push({
+        from: headingLevels[index - 1], to: headingLevels[index], index });
+    }
+    if (skippedLevels.length) contentIssues.push({ code: 'heading_level_skipped', items: skippedLevels });
+    const primaryActions = [...document.querySelectorAll(`${buttonSelector},a[href^="tel:"],a[href^="mailto:"]`)].filter(visible);
+    if (visibleText.length >= 600 && !primaryActions.length) contentIssues.push({ code: 'missing_primary_action' });
     const termMatches = (forbiddenTerms || []).filter(term => typeof term === 'string' && term.trim()).map(term => {
       const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const matches = bodyText.match(new RegExp(escaped, 'giu')) || [];
@@ -222,7 +253,7 @@ async function inspect(page, forbiddenTerms = []) {
       computedStyles: { body: sample('body'), h1: sample('h1'), h2: sample('h2'), paragraph: sample('p'),
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
-      interactions: { controls: links.length, broken: badButtons, forms, popups },
+      interactions: { controls: links.length, broken: badButtons, forms, popups, usabilityIssues },
       layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),

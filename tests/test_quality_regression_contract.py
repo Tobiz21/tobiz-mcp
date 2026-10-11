@@ -21,3 +21,8 @@ def test_quality_regression_fixture_is_wired_into_ci():
     assert "too_many_font_families" in inspector
     assert "text_too_small" in inspector
     assert "excessive_section_gap" in inspector
+    assert "image_aspect_distorted" in inspector
+    assert "field_missing_accessible_label" in inspector
+    assert "tap_target_too_small" in inspector
+    assert "heading_level_skipped" in inspector
+    assert "missing_primary_action" in inspector

@@ -260,6 +260,29 @@ def test_compact_audit_marks_visual_inconsistency_for_review():
     assert result['verdict'] == 'review'
     assert {item['code'] for item in result['warnings']} == {
         'too_many_font_families', 'text_too_small'}
+    assert result['quality_score']['overall'] == 9.4
+    assert result['quality_score']['dimensions']['visual'] == 7.5
+    assert result['quality_score']['meets_7_of_10'] is True
+
+
+def test_compact_audit_critical_error_caps_quality_below_five():
+    report = {'url': 'https://example.test', 'viewports': {'mobile': {
+        'document': {'overflowX': True},
+        'layout': {'horizontalOverflow': [{'tag': 'div'}], 'blockIssues': [], 'textContrast': []},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['quality_score']['overall'] == 4.9
+    assert result['quality_score']['dimensions']['technical'] == 7.0
+    assert result['quality_score']['meets_7_of_10'] is False
+    assert result['fix_plan'][0] == {
+        'priority': 'must_fix',
+        'dimension': 'technical',
+        'code': 'horizontal_overflow',
+        'action': 'Исправить ширину или позиционирование элементов на мобильном экране.',
+    }
 
 
 def test_health_identifies_loaded_quality_features(tmp_path):
@@ -282,6 +305,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'quality_recipe_coverage' in result['features']
     assert 'content_integrity_detection' in result['features']
     assert 'visual_consistency_detection' in result['features']
+    assert 'explainable_quality_score' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
@@ -371,6 +395,8 @@ def test_build_from_template_previews_then_runs_one_save_and_audit():
         title='New site', recipe=recipe, replacement_image='gray.png',
         source_terms=['old topic'], seo={'dir': 'new-site'}, apply=True))
     assert result['ok'] and result['data']['audit']['verdict'] == 'ready'
+    assert result['data']['quality_score']['overall'] == 10.0
+    assert result['data']['quality_score']['meets_7_of_10'] is True
     service.copy_page.assert_awaited_once()
     service.save_page.assert_awaited_once()
     service.inspect_page.assert_awaited_once()

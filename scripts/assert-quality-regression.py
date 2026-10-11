@@ -16,6 +16,10 @@ assert mobile["layout"]["buttonSurfaceContrast"], "Button/surface contrast regre
 assert mobile["media"]["brokenImages"], "Broken image regression was missed"
 form_codes = {code for form in mobile["interactions"]["forms"] for code in form.get("formIssues", [])}
 assert {"missing_lead_name", "lead_name_not_first"} <= form_codes, form_codes
+accessibility_codes = {item["code"] for form in mobile["interactions"]["forms"] for item in form.get("accessibilityIssues", [])}
+assert "field_missing_accessible_label" in accessibility_codes, accessibility_codes
+usability_codes = {item["code"] for item in mobile["interactions"]["usabilityIssues"]}
+assert "tap_target_too_small" in usability_codes, usability_codes
 integrity_codes = {item["code"] for item in mobile["content"]["integrity"]["issues"]}
 assert {"missing_primary_heading", "thin_page_content", "duplicate_headings", "missing_contact_signal"} <= integrity_codes, integrity_codes
 print("Quality regression detection: ready")

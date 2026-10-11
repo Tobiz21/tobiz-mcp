@@ -169,7 +169,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_audit_catalog` | аудит всех типов, галочек, списков, серверных значений и flex-вариантов |
 | `tobiz_get_site_styles`, `tobiz_update_site_styles` | штатные глобальные шрифты, размеры, насыщенность и цвета кнопок через `page_config` |
 | `tobiz_get_computed_styles`, `tobiz_screenshot_page` | реальные стили и полностраничные desktop/mobile PNG-снимки |
-| `tobiz_diagnose_interactions`, `tobiz_audit_page`, `tobiz_audit_summary` | формы, попапы, кнопки, ссылки, контраст, геометрия, остатки исходной тематики, JS-ошибки и изображения |
+| `tobiz_diagnose_interactions`, `tobiz_audit_page`, `tobiz_audit_summary` | формы, попапы, кнопки, ссылки, контраст, геометрия, остатки исходной тематики, JS-ошибки, изображения и объяснимая оценка качества из 10 |
 | `tobiz_add_block`, `tobiz_update_block`, `tobiz_delete_block`, `tobiz_move_block` | правки черновика |
 | `tobiz_save_page` | запись блоков на сайт: рендер HTML, SaveBlocks, проверка вёрстки |
 | `tobiz_update_page` | правка параметров страницы (SEO, название, slug, og:image) — пишет сразу |
@@ -187,6 +187,11 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 Ответ инструмента: `{"ok": true, "data": {...}}` либо
 `{"ok": false, "error": {"code": "...", "message": "...", "hint": "..."}}`.
+
+`tobiz_audit_summary` возвращает `quality_score` по четырем направлениям (`technical`, `visual`,
+`content`, `usability`) и `fix_plan`. Сначала устраняются пункты `must_fix`, затем `improve`.
+Критическая ошибка ограничивает общий балл значением `4.9`; рабочий порог фиксируется полем
+`quality_score.meets_7_of_10`.
 
 ## Как это устроено (коротко)
 

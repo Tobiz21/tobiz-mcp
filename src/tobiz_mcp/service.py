@@ -1328,6 +1328,7 @@ class Service:
                 "quality_recipe_coverage",
                 "content_integrity_detection",
                 "visual_consistency_detection",
+                "explainable_quality_score",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
