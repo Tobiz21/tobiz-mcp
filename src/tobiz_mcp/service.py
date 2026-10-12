@@ -1342,6 +1342,8 @@ class Service:
                 "native_design_reference_comparison",
                 "unified_design_release_gate",
                 "rendered_image_composition_audit",
+                "deterministic_native_site_planning",
+                "post_build_plan_conformance",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

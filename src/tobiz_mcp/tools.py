@@ -15,6 +15,7 @@ from .domain import content as content_domain
 from .domain import composition as composition_domain
 from .domain import design_gate as design_gate_domain
 from .domain import image_audit as image_audit_domain
+from .domain import site_plan as site_plan_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
@@ -59,6 +60,7 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
+    "tobiz_plan_site", "tobiz_check_site_plan",
 }
 
 
@@ -879,6 +881,69 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "quality_score": summary.get("quality_score"),
                 "fix_plan": summary.get("fix_plan", [])}
 
+    @tool("tobiz_plan_site", "Create a deterministic native-first site plan before building. Selects "
+          "an installed TOBIZ template, locks its block structure, assigns a purpose to each section, "
+          "sets text-slot limits, photo briefs, CTA rules and acceptance criteria. Returns a stable "
+          "plan_id that can be validated after restart. Read-only; no page is created.")
+    async def tobiz_plan_site(brief: dict[str, Any], goal: str = "") -> dict[str, Any]:
+        if not isinstance(brief, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
+        if goal and goal not in composition_domain.GOALS:
+            raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
+        try:
+            selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+        except (TypeError, ValueError) as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        return site_plan_domain.build(
+            brief, selection, selected, blueprint, source_draft, goal or None)
+
+    @tool("tobiz_check_site_plan", "Compare an existing TOBIZ page with a deterministic plan_id "
+          "reconstructed from the same brief. Checks native structure and section roles, then runs "
+          "image composition, reference fidelity, editor safety and the unified release gate. Read-only.")
+    async def tobiz_check_site_plan(
+            brief: dict[str, Any], plan_id: str, project_id: Id | None = None,
+            page_id: Id = "", source_terms: list[str] | None = None,
+            screenshots: bool = True) -> dict[str, Any]:
+        selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        plan = site_plan_domain.build(brief, selection, selected, blueprint, source_draft)
+        if plan_id != plan["plan_id"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "plan_id не соответствует текущему брифу и шаблону",
+                "Повторно вызовите tobiz_plan_site и используйте полученный plan_id")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        target_draft = await service.draft(project_id, page_id)
+        target_composition = composition_domain.analyze(target_draft, plan["goal"])
+        plan_check = site_plan_domain.compare(plan, target_draft, target_composition)
+        target_report = await service.inspect_page(
+            project_id, page_id, screenshot=screenshots, viewports=["desktop", "mobile"],
+            forbidden_terms=source_terms)
+        target_audit = audit_domain.compact(target_report)
+        reference_report = await service.inspect_page(
+            selected["project_id"], selected["page_id"], screenshot=False,
+            viewports=["desktop", "mobile"])
+        reference = design_reference_domain.compare(
+            design_reference_domain.extract(
+                source_draft, audit_domain.compact(reference_report), plan["goal"]),
+            design_reference_domain.extract(target_draft, target_audit, plan["goal"]))
+        roundtrip = await service.editor_roundtrip(project_id, page_id)
+        gate = design_gate_domain.evaluate(
+            target_audit, target_composition, reference, roundtrip,
+            has_unsaved_changes=target_draft.has_changes)
+        if not plan_check["matches"]:
+            gate["blockers"] = plan_check["issues"] + gate["blockers"]
+            gate["verdict"] = "save_blocked"
+            gate["release_ready"] = False
+            gate["score"] = min(float(gate["score"]), 4.9)
+        return {"plan": plan, "plan_check": plan_check,
+                "images": image_audit_domain.summarize(target_report),
+                "reference_comparison": reference, "gate": gate}
+
     @tool("tobiz_build_quality_page", "Brief-driven native TOBIZ quality pipeline. Selects a verified "
           "installed template, enforces the 30% Flex limit, returns a photo-slot manifest in preview, "
           "then copies, fills and saves once. Apply mode also runs desktop/mobile audit and an editor "
@@ -890,7 +955,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                                        seo: dict[str, Any] | None = None,
                                        apply: bool = False,
                                        viewports: list[str] | None = None,
-                                       details: bool = False) -> dict[str, Any]:
+                                       details: bool = False,
+                                       plan_id: str = "") -> dict[str, Any]:
         if not isinstance(brief, dict):
             raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
         try:
@@ -901,6 +967,11 @@ def register(mcp: Any, service: Service) -> list[str]:
         source_passport = content_domain.passport(source_draft)
         blueprint = content_domain.compact_blueprint(
             source_passport, content_domain.content_map(source_draft))
+        site_plan = site_plan_domain.build(brief, selection, selected, blueprint, source_draft)
+        if plan_id and plan_id != site_plan["plan_id"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "plan_id не соответствует выбранному шаблону",
+                "Повторно вызовите tobiz_plan_site для этого брифа")
         coverage_recipe = recipe or {
             "types": blueprint.get("recipe", {}).get("types", []), "slots": []}
         coverage = content_domain.recipe_coverage(blueprint, coverage_recipe)
@@ -943,6 +1014,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         if not details:
             result.pop("passport", None)
         result["blueprint"] = blueprint
+        result["site_plan"] = site_plan
         result["recipe_coverage"] = coverage if recipe else {
             key: value for key, value in coverage.items()
             if key not in {"missing", "unchanged"}
@@ -967,12 +1039,34 @@ def register(mcp: Any, service: Service) -> list[str]:
             result["editor_roundtrip"] = roundtrip
             audit_verdict = (result.get("audit") or {}).get("verdict", "review")
             result["quality_score"] = (result.get("audit") or {}).get("quality_score")
-            if audit_verdict == "save_blocked" or not roundtrip.get("editor_safe"):
-                result["quality_verdict"] = "save_blocked"
-            elif audit_verdict != "ready" or roundtrip.get("warnings"):
-                result["quality_verdict"] = "review"
-            else:
-                result["quality_verdict"] = "ready"
+            target_draft = await service.draft(target_project, target_page_id, refresh=True)
+            target_composition = composition_domain.analyze(target_draft, site_plan["goal"])
+            plan_check = site_plan_domain.compare(site_plan, target_draft, target_composition)
+            target_report = await service.inspect_page(
+                target_project, target_page_id, screenshot=True,
+                viewports=viewports or ["desktop", "mobile"], forbidden_terms=source_terms)
+            target_audit = audit_domain.compact(target_report)
+            reference_report = await service.inspect_page(
+                selected["project_id"], selected["page_id"], screenshot=False,
+                viewports=["desktop", "mobile"])
+            reference = design_reference_domain.compare(
+                design_reference_domain.extract(
+                    source_draft, audit_domain.compact(reference_report), site_plan["goal"]),
+                design_reference_domain.extract(
+                    target_draft, target_audit, site_plan["goal"]))
+            gate = design_gate_domain.evaluate(
+                target_audit, target_composition, reference, roundtrip,
+                has_unsaved_changes=target_draft.has_changes)
+            if not plan_check["matches"]:
+                gate["blockers"] = plan_check["issues"] + gate["blockers"]
+                gate["verdict"] = "save_blocked"
+                gate["release_ready"] = False
+                gate["score"] = min(float(gate["score"]), 4.9)
+            result["plan_check"] = plan_check
+            result["image_audit"] = image_audit_domain.summarize(target_report)
+            result["reference_comparison"] = reference
+            result["design_gate"] = gate
+            result["quality_verdict"] = gate["verdict"]
         else:
             result["quality_verdict"] = "preview"
             result["quality_score"] = None

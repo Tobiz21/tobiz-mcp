@@ -26,6 +26,8 @@ REQUIRED_TOOLS = {
     "tobiz_compare_design_reference",
     "tobiz_release_design_gate",
     "tobiz_audit_images",
+    "tobiz_plan_site",
+    "tobiz_check_site_plan",
 }
 
 

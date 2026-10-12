@@ -78,3 +78,4 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_refine_design', 'tobiz_audit_composition',
             'tobiz_compare_design_reference', 'tobiz_release_design_gate',
             'tobiz_audit_images'} <= set(names)
+    assert {'tobiz_plan_site', 'tobiz_check_site_plan'} <= set(names)

@@ -10,6 +10,8 @@
   checks, cross-section reuse detection, background-text scrim validation and semantic context.
 - Clean-install verification now continues against the signed public GHCR image when the external
   MCP Registry times out, while still failing on an incorrect Registry record.
+- Added deterministic native site planning with stable plan IDs, section purposes, copy limits,
+  photo briefs and post-build conformance checks integrated into the quality-page pipeline.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

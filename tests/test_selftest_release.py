@@ -45,6 +45,8 @@ class FakeService:
             "native_design_reference_comparison",
             "unified_design_release_gate",
             "rendered_image_composition_audit",
+            "deterministic_native_site_planning",
+            "post_build_plan_conformance",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

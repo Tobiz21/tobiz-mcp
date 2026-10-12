@@ -404,6 +404,8 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'native_design_reference_comparison' in result['features']
     assert 'unified_design_release_gate' in result['features']
     assert 'rendered_image_composition_audit' in result['features']
+    assert 'deterministic_native_site_planning' in result['features']
+    assert 'post_build_plan_conformance' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
