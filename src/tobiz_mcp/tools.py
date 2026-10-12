@@ -16,6 +16,7 @@ from .domain import composition as composition_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
+from .domain import design_reference as design_reference_domain
 from .domain import layout as layout_domain
 from .domain import refinement as refinement_domain
 from .service import Service
@@ -55,6 +56,7 @@ READ_TOOLS = {
     "tobiz_layout_registry", "tobiz_repair_layout",
     "tobiz_refine_design",
     "tobiz_audit_composition",
+    "tobiz_compare_design_reference",
 }
 
 
@@ -1245,6 +1247,43 @@ def register(mcp: Any, service: Service) -> list[str]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         draft = await service.draft(project_id, page_id)
         return composition_domain.analyze(draft, goal)
+
+    @tool("tobiz_compare_design_reference", "Compare a target TOBIZ page with a native reference "
+          "page across block sequence, semantic section roles, native style fields and rendered "
+          "desktop/mobile design profiles. Returns per-block and visual deviations without changing "
+          "either page. Use before delivery when a site must preserve an installed template design.")
+    async def tobiz_compare_design_reference(
+            reference_project_id: Id, reference_page_id: Id,
+            target_project_id: Id, target_page_id: Id,
+            goal: str = "lead_generation", screenshots: bool = False) -> dict[str, Any]:
+        if goal not in composition_domain.GOALS:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}",
+                "Используйте lead_generation, education или ecommerce")
+        reference_project_id, _ = await service.resolve_page(
+            reference_project_id, reference_page_id)
+        target_project_id, _ = await service.resolve_page(target_project_id, target_page_id)
+        reference_draft = await service.draft(reference_project_id, reference_page_id)
+        target_draft = await service.draft(target_project_id, target_page_id)
+        reference_report = await service.inspect_page(
+            reference_project_id, reference_page_id, screenshot=screenshots,
+            viewports=["desktop", "mobile"])
+        target_report = await service.inspect_page(
+            target_project_id, target_page_id, screenshot=screenshots,
+            viewports=["desktop", "mobile"])
+        reference_audit = audit_domain.compact(reference_report)
+        target_audit = audit_domain.compact(target_report)
+        reference_recipe = design_reference_domain.extract(reference_draft, reference_audit, goal)
+        target_recipe = design_reference_domain.extract(target_draft, target_audit, goal)
+        return {
+            "comparison": design_reference_domain.compare(reference_recipe, target_recipe),
+            "reference_recipe": reference_recipe,
+            "target_recipe": target_recipe,
+            "draft_warnings": {
+                "reference_has_unsaved_changes": reference_draft.has_changes,
+                "target_has_unsaved_changes": target_draft.has_changes,
+            },
+        }
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "

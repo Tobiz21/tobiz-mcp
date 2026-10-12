@@ -117,6 +117,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "page_wide_design_system_analysis",
         "safe_design_refinement",
         "semantic_page_composition_audit",
+        "native_design_reference_comparison",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {

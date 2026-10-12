@@ -1339,6 +1339,7 @@ class Service:
                 "page_wide_design_system_analysis",
                 "safe_design_refinement",
                 "semantic_page_composition_audit",
+                "native_design_reference_comparison",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

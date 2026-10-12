@@ -3,6 +3,7 @@
 ## 0.9.0b2
 
 - Added semantic page-composition audit with goal-specific coverage, trust and section-order scoring.
+- Added native reference comparison for structure, section roles, block styles and rendered design profiles.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

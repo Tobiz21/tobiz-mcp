@@ -23,6 +23,7 @@ REQUIRED_TOOLS = {
     "tobiz_repair_layout",
     "tobiz_refine_design",
     "tobiz_audit_composition",
+    "tobiz_compare_design_reference",
 }
 
 
