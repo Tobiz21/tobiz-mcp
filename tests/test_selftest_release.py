@@ -39,6 +39,8 @@ class FakeService:
             "native_card_layout_autofix",
             "native_layout_control_registry",
             "safe_layout_repair",
+            "page_wide_design_system_analysis",
+            "safe_design_refinement",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

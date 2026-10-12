@@ -15,6 +15,7 @@ def test_public_smoke_covers_protocol_and_core_tools() -> None:
     assert "tobiz_improve_page" in script
     assert "tobiz_layout_registry" in script
     assert "tobiz_repair_layout" in script
+    assert "tobiz_refine_design" in script
     assert "mcp-smoke.py:/tmp/mcp-smoke.py:ro" in workflow
     assert 'workflows: ["Publish container"]' in workflow
     assert "github.event.workflow_run.head_sha" in workflow

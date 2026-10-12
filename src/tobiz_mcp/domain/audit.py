@@ -40,6 +40,10 @@ FIXES = {
     "image_aspect_distorted": "Сохранить пропорции изображения через штатный режим кадрирования.",
     "content_clipped": "Увеличить высоту или сократить содержимое штатными настройками блока.",
     "cards_not_stacked_mobile": "Включить штатное мобильное складывание карточек в одну колонку.",
+    "container_widths_inconsistent": "Привести случайные ширины контейнеров к основной сетке страницы.",
+    "button_palette_inconsistent": "Оставить один основной и один дополнительный цвет кнопок.",
+    "button_radii_inconsistent": "Унифицировать радиусы кнопок в штатных настройках блоков.",
+    "heading_alignment_inconsistent": "Согласовать выравнивание заголовков с композицией страницы.",
     "field_missing_accessible_label": "Добавить полю понятную подпись или placeholder.",
     "tap_target_too_small": "Увеличить мобильную кнопку минимум до 40x40px.",
     "heading_level_skipped": "Исправить последовательность уровней H1-H6.",
@@ -96,6 +100,10 @@ def _fix_plan(critical, warnings, limit=8):
             if block:
                 blocks.append(str(block).removeprefix("b_"))
             for nested in item.get("items") or []:
+                nested_block = nested.get("block") if isinstance(nested, dict) else None
+                if nested_block:
+                    blocks.append(str(nested_block).removeprefix("b_"))
+            for nested in raw.get("blocks") or []:
                 nested_block = nested.get("block") if isinstance(nested, dict) else None
                 if nested_block:
                     blocks.append(str(nested_block).removeprefix("b_"))
@@ -186,6 +194,7 @@ def compact(report):
             "broken_interactions": len(broken),
             "form_issues": len(form_issues),
             "screenshot": data.get("screenshot"),
+            "design_profile": (data.get("layout") or {}).get("designProfile") or {},
         }
     if report.get("consoleErrors"):
         warnings.append({"code": "console_errors", "count": len(report["consoleErrors"])})
@@ -199,8 +208,10 @@ def compact(report):
     for severity, items in (("critical", critical), ("warning", warnings)):
         for item in items:
             raw = item.get("item") or item
-            targets = [raw] + [nested for nested in item.get("items") or []
-                               if isinstance(nested, dict)]
+            targets = ([raw] + [nested for nested in item.get("items") or []
+                                if isinstance(nested, dict)]
+                       + [nested for nested in raw.get("blocks") or []
+                          if isinstance(nested, dict)])
             for target in targets:
                 block = target.get("block")
                 if not block:

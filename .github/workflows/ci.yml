@@ -63,6 +63,13 @@ jobs:
                 -v "$PWD/renderer/fixtures:/fixtures:ro" \
                 tobiz-mcp:ci /app/renderer/page-inspector.js > visual-report.json
           python scripts/assert-visual-consistency-regression.py visual-report.json
+      - name: Verify page-wide design-system regressions are detected
+        run: |
+          printf '%s' '{"url":"file:///fixtures/design-system-failures.html","output_dir":"/tmp/audit","viewports":["desktop"],"screenshot":false}' \
+            | docker run --rm -i --entrypoint node \
+                -v "$PWD/renderer/fixtures:/fixtures:ro" \
+                tobiz-mcp:ci /app/renderer/page-inspector.js > design-system-report.json
+          python scripts/assert-design-system-regression.py design-system-report.json
       - name: Verify known-good landing page stays clean
         run: |
           printf '%s' '{"url":"file:///fixtures/quality-pass.html","output_dir":"/tmp/audit","viewports":["desktop","mobile"],"screenshot":false}' \

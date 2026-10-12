@@ -1336,6 +1336,8 @@ class Service:
                 "clipped_content_detection",
                 "native_layout_control_registry",
                 "safe_layout_repair",
+                "page_wide_design_system_analysis",
+                "safe_design_refinement",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -16,6 +16,7 @@ from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
 from .domain import layout as layout_domain
+from .domain import refinement as refinement_domain
 from .service import Service
 
 logger = log.get("tools")
@@ -51,6 +52,7 @@ READ_TOOLS = {
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
     "tobiz_layout_registry", "tobiz_repair_layout",
+    "tobiz_refine_design",
 }
 
 
@@ -1153,6 +1155,80 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "after_score": after_score, "issue_delta": layout_domain.issue_count(after)
                 - layout_domain.issue_count(before), "new_critical": new_critical,
                 "after": after, "rollback": rollback, "editor_roundtrip": final_roundtrip}
+
+    @tool("tobiz_refine_design", "Analyze the whole rendered page as a design system across desktop "
+          "and mobile: container grid, section alignment and rhythm, button palette/radii, typography, "
+          "image proportions and clipped content. Preview by default. Apply mode combines only deterministic "
+          "native template and layout fixes, validates editor roundtrip, saves once and restores the backup "
+          "if quality decreases, a critical error appears or design-system consistency regresses.")
+    async def tobiz_refine_design(project_id: Id | None = None, page_id: Id = "",
+                                  source_terms: list[str] | None = None,
+                                  apply: bool = False) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        if draft.has_changes:
+            raise errors.TobizError(
+                errors.CONFLICT, "В MCP-черновике есть несохраненные изменения",
+                "Сохраните или отмените их перед комплексным улучшением дизайна")
+        before_report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=["desktop", "mobile"],
+            forbidden_terms=source_terms)
+        before = audit_domain.compact(before_report)
+        types = await service.block_types(project_id)
+        candidate, template_changes, template_warnings = template_domain.prepare_template(
+            draft, content_domain.fingerprint(draft))
+        candidate, layout_changes, layout_warnings = layout_domain.prepare(
+            candidate, before, types)
+        changes = template_changes + layout_changes
+        warnings = template_warnings + layout_warnings
+        result = {
+            "preview": not apply, "before": before,
+            "design_system": refinement_domain.summarize(before),
+            "safe_changes": changes, "warnings": warnings, "can_apply": bool(changes),
+            "manual_design_plan": [item for item in before.get("fix_plan", [])
+                                   if item.get("dimension") == "visual"],
+        }
+        if not apply:
+            return result
+        if not changes:
+            return {**result, "preview": False, "applied": False,
+                    "stopped_reason": "no_safe_design_fixes"}
+        service.drafts.put(candidate)
+        roundtrip = await service.editor_roundtrip(project_id, page_id)
+        if not roundtrip.get("editor_safe"):
+            service.drafts.put(draft)
+            return {**result, "preview": False, "applied": False,
+                    "stopped_reason": "editor_not_safe", "editor_roundtrip": roundtrip}
+        save = await service.save_page(project_id, page_id)
+        after_report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=["desktop", "mobile"],
+            forbidden_terms=source_terms)
+        after = audit_domain.compact(after_report)
+        design_delta = refinement_domain.regression(before, after)
+        before_critical = {(item.get("viewport"), item.get("code"))
+                           for item in before.get("critical") or []}
+        after_critical = {(item.get("viewport"), item.get("code"))
+                          for item in after.get("critical") or []}
+        new_critical = after_critical - before_critical
+        regressed = (after["quality_score"]["overall"] < before["quality_score"]["overall"]
+                     or bool(new_critical) or design_delta["regressed"])
+        rollback = None
+        if regressed:
+            backup_id = (save.get("backup") or {}).get("backup_id")
+            if backup_id:
+                rollback = await service.restore_page_backup(
+                    project_id, page_id, backup_id, confirm=True)
+        final_roundtrip = await service.editor_roundtrip(project_id, page_id)
+        return {**result, "preview": False, "applied": not regressed,
+                "stopped_reason": "design_regression_rolled_back" if regressed else "design_refined",
+                "backup": save.get("backup"), "after": after,
+                "after_design_system": refinement_domain.summarize(after),
+                "design_delta": design_delta,
+                "score_delta": round(after["quality_score"]["overall"]
+                                     - before["quality_score"]["overall"], 1),
+                "rollback": rollback, "editor_roundtrip": final_roundtrip}
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "

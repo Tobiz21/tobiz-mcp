@@ -382,6 +382,8 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'clipped_content_detection' in result['features']
     assert 'native_layout_control_registry' in result['features']
     assert 'safe_layout_repair' in result['features']
+    assert 'page_wide_design_system_analysis' in result['features']
+    assert 'safe_design_refinement' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])
@@ -619,5 +621,49 @@ def test_repair_layout_applies_and_rolls_back_new_critical_regression():
     assert data['applied'] is False
     assert data['stopped_reason'] == 'regression_rolled_back'
     assert data['new_critical'][0]['code'] == 'child_outside_container'
+    service.restore_page_backup.assert_awaited_once_with(
+        '1', '2', 'before-layout-repair', confirm=True)
+
+
+def design_audit_report(*, system_issue=None):
+    visual = [] if not system_issue else [{"code": system_issue}]
+    return {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'visualIssues': visual,
+                   'textContrast': [], 'buttonSurfaceContrast': [],
+                   'designProfile': {'containerWidths': [1170], 'buttonColors': ['rgb(1,2,3)']}},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': [], 'integrity': {'issues': []}},
+        'interactions': {'broken': [], 'forms': [], 'usabilityIssues': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+
+
+def test_refine_design_previews_combined_safe_native_changes():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '165', {'show_vk': 1, 'link_vk': ''}),
+    }, order=['1'])
+    service = repair_service(draft, [design_audit_report()])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_refine_design'](project_id='1', page_id='2'))
+    data = result['data']
+    assert data['preview'] is True and data['can_apply'] is True
+    assert data['safe_changes'][0]['reason'] == 'hide_empty_social'
+    assert data['design_system']['profiles']['desktop']['containerWidths'] == [1170]
+    service.save_page.assert_not_awaited()
+
+
+def test_refine_design_rolls_back_new_design_system_regression():
+    draft = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '165', {'show_vk': 1, 'link_vk': ''}),
+    }, order=['1'])
+    service = repair_service(draft, [
+        design_audit_report(), design_audit_report(system_issue='button_palette_inconsistent')])
+    functions = registered_functions(service)
+    result = finish(functions['tobiz_refine_design'](
+        project_id='1', page_id='2', apply=True))
+    data = result['data']
+    assert data['applied'] is False
+    assert data['stopped_reason'] == 'design_regression_rolled_back'
+    assert data['design_delta']['introduced'] == ['button_palette_inconsistent']
     service.restore_page_backup.assert_awaited_once_with(
         '1', '2', 'before-layout-repair', confirm=True)

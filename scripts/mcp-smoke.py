@@ -20,6 +20,7 @@ REQUIRED_TOOLS = {
     "tobiz_improve_page",
     "tobiz_layout_registry",
     "tobiz_repair_layout",
+    "tobiz_refine_design",
 }
 
 

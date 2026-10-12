@@ -74,4 +74,5 @@ def test_design_tools_are_registered_as_read_only_operations():
     names = register(MCP(), SimpleNamespace(config=SimpleNamespace(read_only=False)))
     assert {'tobiz_design_library', 'tobiz_select_design',
             'tobiz_editor_roundtrip_check', 'tobiz_build_quality_page',
-            'tobiz_improve_page', 'tobiz_layout_registry', 'tobiz_repair_layout'} <= set(names)
+            'tobiz_improve_page', 'tobiz_layout_registry', 'tobiz_repair_layout',
+            'tobiz_refine_design'} <= set(names)

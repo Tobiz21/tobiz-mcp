@@ -231,6 +231,31 @@ async function inspect(page, forbiddenTerms = []) {
     });
     if (clippedContent.length) visualIssues.push({ code: 'content_clipped', count: clippedContent.length,
       items: clippedContent.slice(0, 20).map(ref) });
+    const sectionMetrics = visibleBlocks.map(item => {
+      const inner = item.el.querySelector(':scope > .section_inner');
+      const innerRect = inner?.getBoundingClientRect();
+      const heading = [...item.el.querySelectorAll('h1,h2,.title')].find(visible);
+      const text = (item.el.innerText || '').replace(/\s+/g, ' ').trim();
+      return { block: item.el.id, width: innerRect ? Math.round(innerRect.width) : null,
+        left: innerRect ? Math.round(innerRect.left) : null, height: Math.round(item.rect.height),
+        textCharacters: text.length, headingAlign: heading ? getComputedStyle(heading).textAlign : null,
+        background: getComputedStyle(item.el).backgroundColor };
+    });
+    const buttons = [...document.querySelectorAll(buttonSelector)].filter(visible);
+    const buttonColors = [...new Set(buttons.map(el => getComputedStyle(el).backgroundColor)
+      .filter(value => value && value !== 'rgba(0, 0, 0, 0)'))];
+    const buttonRadii = [...new Set(buttons.map(el => getComputedStyle(el).borderRadius).filter(Boolean))];
+    const headingAlignments = [...new Set(sectionMetrics.map(item => item.headingAlign).filter(Boolean))];
+    if (innerWidth >= 1100) {
+      const constrained = sectionMetrics.filter(item => item.width && item.width < innerWidth - 40);
+      const widths = [...new Set(constrained.map(item => Math.round(item.width / 20) * 20))];
+      if (constrained.length >= 4 && widths.length > 2) visualIssues.push({
+        code: 'container_widths_inconsistent', widths,
+        blocks: constrained.map(item => ({ block: item.block, width: item.width })) });
+    }
+    if (buttonColors.length > 3) visualIssues.push({ code: 'button_palette_inconsistent', items: buttonColors });
+    if (buttonRadii.length > 3) visualIssues.push({ code: 'button_radii_inconsistent', items: buttonRadii });
+    if (headingAlignments.length > 2) visualIssues.push({ code: 'heading_alignment_inconsistent', items: headingAlignments });
     const usabilityIssues = [];
     if (innerWidth <= 600) {
       const smallTargets = [...document.querySelectorAll(buttonSelector)].filter(visible).filter(el => {
@@ -280,7 +305,9 @@ async function inspect(page, forbiddenTerms = []) {
       interactions: { controls: links.length, broken: badButtons, forms, popups, usabilityIssues },
       layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast,
         blocks: visibleBlocks.map(item => ({ ...ref(item.el), top: Math.round(item.rect.top),
-          bottom: Math.round(item.rect.bottom) })) },
+          bottom: Math.round(item.rect.bottom) })),
+        designProfile: { sections: sectionMetrics, containerWidths: [...new Set(sectionMetrics.map(item => item.width).filter(Boolean))],
+          buttonColors, buttonRadii, headingAlignments, fontFamilies } },
       media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),
         termMatches, integrity: { textCharacters: visibleText.length, h1Count, headings: headingTexts.length,
