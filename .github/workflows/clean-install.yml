@@ -30,16 +30,16 @@ jobs:
           name = "io.github.Tobiz21/tobiz-mcp"
           url = "https://registry.modelcontextprotocol.io/v0.1/servers?search=" + urllib.parse.quote(name)
           payload = None
+          last_error = None
           for attempt in range(1, 6):
               try:
                   with urllib.request.urlopen(url, timeout=30) as response:
                       payload = json.load(response)
                   break
               except (TimeoutError, socket.timeout, urllib.error.URLError) as exc:
+                  last_error = exc
                   if attempt == 5:
-                      raise RuntimeError(
-                          f"Registry did not respond after {attempt} attempts: {exc}"
-                      ) from exc
+                      break
                   delay = attempt * 5
                   print(
                       f"Registry request {attempt}/5 failed: {exc}; "
@@ -48,7 +48,13 @@ jobs:
                   )
                   time.sleep(delay)
 
-          assert payload is not None
+          if payload is None:
+              print(
+                  f"::warning::Official MCP Registry is unavailable after 5 attempts: "
+                  f"{last_error}. Continuing with the signed public GHCR package.",
+                  flush=True,
+              )
+              raise SystemExit(0)
           matches = [item["server"] for item in payload["servers"] if item["server"]["name"] == name]
           assert len(matches) == 1, f"Expected one Registry result for {name}, got {len(matches)}"
           server = matches[0]

@@ -8,6 +8,8 @@
   editor safety and unsaved draft detection.
 - Added rendered image composition auditing with source/rendered geometry, crop and resolution
   checks, cross-section reuse detection, background-text scrim validation and semantic context.
+- Clean-install verification now continues against the signed public GHCR image when the external
+  MCP Registry times out, while still failing on an incorrect Registry record.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

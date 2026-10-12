@@ -19,3 +19,5 @@ def test_public_smoke_covers_protocol_and_core_tools() -> None:
     assert "mcp-smoke.py:/tmp/mcp-smoke.py:ro" in workflow
     assert 'workflows: ["Publish container"]' in workflow
     assert "github.event.workflow_run.head_sha" in workflow
+    assert "Continuing with the signed public GHCR package" in workflow
+    assert "raise SystemExit(0)" in workflow
