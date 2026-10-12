@@ -17,6 +17,8 @@ USABILITY = {
     "field_missing_accessible_label", "tap_target_too_small",
 }
 
+CRITICAL_VISUAL = {"text_over_image_without_scrim"}
+
 FIXES = {
     "horizontal_overflow": "Исправить ширину или позиционирование элементов на мобильном экране.",
     "broken_images": "Заменить битые изображения штатными файлами TOBIZ.",
@@ -38,6 +40,10 @@ FIXES = {
     "card_image_ratios_inconsistent": "Привести изображения одной группы карточек к общей пропорции.",
     "excessive_section_gap": "Убрать случайный двойной отступ между секциями.",
     "image_aspect_distorted": "Сохранить пропорции изображения через штатный режим кадрирования.",
+    "image_low_resolution": "Заменить растянутое изображение файлом достаточного разрешения.",
+    "image_crop_extreme": "Выбрать кадр подходящей ориентации или ослабить штатное кадрирование.",
+    "image_reused_across_sections": "Заменить повторяющееся фото в одной из смысловых секций.",
+    "text_over_image_without_scrim": "Включить штатное затемнение фонового фото для читаемости текста.",
     "content_clipped": "Увеличить высоту или сократить содержимое штатными настройками блока.",
     "cards_not_stacked_mobile": "Включить штатное мобильное складывание карточек в одну колонку.",
     "container_widths_inconsistent": "Привести случайные ширины контейнеров к основной сетке страницы.",
@@ -181,7 +187,8 @@ def compact(report):
             critical.append({"viewport": name, "code": issue.get("code", "block_geometry"),
                              "item": issue})
         for issue in (data.get("layout") or {}).get("visualIssues") or []:
-            warnings.append({"viewport": name, **issue})
+            target = critical if issue.get("code") in CRITICAL_VISUAL else warnings
+            target.append({"viewport": name, **issue})
         for item in broken:
             critical.append({"viewport": name, "code": item.get("issue", "broken_interaction"),
                              "item": item})

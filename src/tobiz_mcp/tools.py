@@ -14,6 +14,7 @@ from .domain import blocks as block_domain
 from .domain import content as content_domain
 from .domain import composition as composition_domain
 from .domain import design_gate as design_gate_domain
+from .domain import image_audit as image_audit_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
@@ -57,7 +58,7 @@ READ_TOOLS = {
     "tobiz_layout_registry", "tobiz_repair_layout",
     "tobiz_refine_design",
     "tobiz_audit_composition",
-    "tobiz_compare_design_reference", "tobiz_release_design_gate",
+    "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
 }
 
 
@@ -1329,6 +1330,17 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"gate": gate, "audit": audit, "composition": composition,
                 "reference_comparison": reference_comparison,
                 "editor_roundtrip": roundtrip}
+
+    @tool("tobiz_audit_images", "Audit every rendered image on desktop and mobile. Detects broken "
+          "or stretched files, insufficient source resolution, extreme cropping, repeated photos, "
+          "inconsistent card ratios and text over background images without a scrim. Returns image "
+          "geometry, nearby section text and screenshots for semantic visual review. Read-only.")
+    async def tobiz_audit_images(project_id: Id | None = None, page_id: Id = "",
+                                 screenshots: bool = True) -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        report = await service.inspect_page(
+            project_id, page_id, screenshot=screenshots, viewports=["desktop", "mobile"])
+        return image_audit_domain.summarize(report)
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "

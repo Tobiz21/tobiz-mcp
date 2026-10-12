@@ -44,6 +44,7 @@ class FakeService:
             "semantic_page_composition_audit",
             "native_design_reference_comparison",
             "unified_design_release_gate",
+            "rendered_image_composition_audit",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

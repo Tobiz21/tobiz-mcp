@@ -317,6 +317,22 @@ def test_compact_audit_marks_visual_inconsistency_for_review():
     assert result['quality_score']['meets_7_of_10'] is True
 
 
+def test_compact_audit_blocks_uncovered_text_over_background_image():
+    report = {'url': 'https://example.test', 'viewports': {'desktop': {
+        'document': {'overflowX': False},
+        'layout': {'horizontalOverflow': [], 'blockIssues': [], 'textContrast': [],
+                   'visualIssues': [{'code': 'text_over_image_without_scrim',
+                                     'items': [{'block': 'b_42'}]}]},
+        'media': {'brokenImages': [], 'missingAlt': 0},
+        'content': {'termMatches': []},
+        'interactions': {'broken': [], 'forms': []},
+    }}, 'consoleErrors': [], 'pageErrors': []}
+    result = compact(report)
+    assert result['verdict'] == 'save_blocked'
+    assert result['critical'][0]['code'] == 'text_over_image_without_scrim'
+    assert result['fix_plan'][0]['block_ids'] == ['42']
+
+
 def test_compact_audit_critical_error_caps_quality_below_five():
     report = {'url': 'https://example.test', 'viewports': {'mobile': {
         'document': {'overflowX': True},
@@ -387,6 +403,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'semantic_page_composition_audit' in result['features']
     assert 'native_design_reference_comparison' in result['features']
     assert 'unified_design_release_gate' in result['features']
+    assert 'rendered_image_composition_audit' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

@@ -22,6 +22,10 @@ def test_quality_regression_fixture_is_wired_into_ci():
     assert "text_too_small" in inspector
     assert "excessive_section_gap" in inspector
     assert "image_aspect_distorted" in inspector
+    assert "image_low_resolution" in inspector
+    assert "image_crop_extreme" in inspector
+    assert "image_reused_across_sections" in inspector
+    assert "text_over_image_without_scrim" in inspector
     assert "field_missing_accessible_label" in inspector
     assert "tap_target_too_small" in inspector
     assert "heading_level_skipped" in inspector

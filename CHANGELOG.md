@@ -6,6 +6,8 @@
 - Added native reference comparison for structure, section roles, block styles and rendered design profiles.
 - Added a unified design release gate covering rendered QA, composition, reference fidelity,
   editor safety and unsaved draft detection.
+- Added rendered image composition auditing with source/rendered geometry, crop and resolution
+  checks, cross-section reuse detection, background-text scrim validation and semantic context.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

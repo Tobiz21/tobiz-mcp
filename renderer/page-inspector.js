@@ -104,8 +104,12 @@ async function inspect(page, forbiddenTerms = []) {
     const popups = [...document.querySelectorAll('[class*=popup], [class*=modal], [role=dialog]')].map(el => ({ ...ref(el), visible: visible(el) })).slice(0, 100);
     const allVisible = [...document.body.querySelectorAll('*')].filter(visible);
     const overflow = allVisible.filter(el => { const r = el.getBoundingClientRect(); return r.right > innerWidth + 2 || r.left < -2; }).slice(0, 100).map(ref);
-    const images = [...document.images].map(img => ({ src: img.currentSrc || img.src, alt: img.alt || '', complete: img.complete,
-      naturalWidth: img.naturalWidth, visible: visible(img) }));
+    const images = [...document.images].map(img => { const r = img.getBoundingClientRect(); const s = getComputedStyle(img);
+      const block = img.closest?.('[id^="b_"]'); return { src: img.currentSrc || img.src, alt: img.alt || '', complete: img.complete,
+        naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, visible: visible(img), block: block?.id || null,
+        renderedWidth: Math.round(r.width), renderedHeight: Math.round(r.height), objectFit: s.objectFit,
+        nearbyText: (img.closest('article,.item,.tile,.card,[class*=item],[class*=card]')?.innerText || block?.innerText || '')
+          .trim().replace(/\s+/g, ' ').slice(0, 180) }; });
     const textContrast = [...document.querySelectorAll('h1,h2,h3,h4,p,.form_title,.form_text,.field_title')]
       .filter(el => visible(el) && [...el.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()))
       .map(el => {
@@ -223,6 +227,35 @@ async function inspect(page, forbiddenTerms = []) {
       });
     if (distortedImages.length) visualIssues.push({ code: 'image_aspect_distorted', count: distortedImages.length,
       items: distortedImages.slice(0, 20).map(ref) });
+    const lowResolutionImages = images.filter(item => item.visible && item.naturalWidth > 0 && item.naturalHeight > 0 &&
+      item.renderedWidth * item.renderedHeight >= 20000 &&
+      (item.renderedWidth > item.naturalWidth * 1.5 || item.renderedHeight > item.naturalHeight * 1.5));
+    if (lowResolutionImages.length) visualIssues.push({ code: 'image_low_resolution', count: lowResolutionImages.length,
+      items: lowResolutionImages.slice(0, 20) });
+    const extremeCrops = images.filter(item => item.visible && item.objectFit === 'cover' && item.naturalWidth > 0 && item.naturalHeight > 0 &&
+      item.renderedWidth > 0 && item.renderedHeight > 0 &&
+      Math.max((item.naturalWidth / item.naturalHeight) / (item.renderedWidth / item.renderedHeight),
+        (item.renderedWidth / item.renderedHeight) / (item.naturalWidth / item.naturalHeight)) > 2.2);
+    if (extremeCrops.length) visualIssues.push({ code: 'image_crop_extreme', count: extremeCrops.length,
+      items: extremeCrops.slice(0, 20) });
+    const imageUsage = new Map();
+    images.filter(item => item.visible && item.src && !item.src.startsWith('data:')).forEach(item => {
+      const clean = item.src.split('?')[0]; const blocks = imageUsage.get(clean) || new Set();
+      if (item.block) blocks.add(item.block); imageUsage.set(clean, blocks);
+    });
+    const repeatedImages = [...imageUsage.entries()].filter(([, blocks]) => blocks.size >= 2)
+      .map(([src, blocks]) => ({ src, blocks: [...blocks] }));
+    if (repeatedImages.length) visualIssues.push({ code: 'image_reused_across_sections', count: repeatedImages.length,
+      items: repeatedImages.slice(0, 20) });
+    const uncoveredBackgroundText = visibleBlocks.filter(item => {
+      const image = getComputedStyle(item.el).backgroundImage;
+      if (!image || image === 'none' || !(item.el.innerText || '').trim()) return false;
+      const overlay = item.el.querySelector(':scope > .back_dark,[class*=overlay],[class*=substrate]');
+      const ownColor = rgb(getComputedStyle(item.el).backgroundColor);
+      return !(overlay && visible(overlay)) && !(ownColor && ownColor[3] >= .35);
+    });
+    if (uncoveredBackgroundText.length) visualIssues.push({ code: 'text_over_image_without_scrim',
+      count: uncoveredBackgroundText.length, items: uncoveredBackgroundText.slice(0, 20).map(item => ref(item.el)) });
     const clippedContent = allVisible.filter(el => {
       if (!el.innerText?.trim() || ['BODY', 'HTML'].includes(el.tagName)) return false;
       const s = getComputedStyle(el);
@@ -308,7 +341,8 @@ async function inspect(page, forbiddenTerms = []) {
           bottom: Math.round(item.rect.bottom) })),
         designProfile: { sections: sectionMetrics, containerWidths: [...new Set(sectionMetrics.map(item => item.width).filter(Boolean))],
           buttonColors, buttonRadii, headingAlignments, fontFamilies } },
-      media: { images: images.length, brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
+      media: { images: images.length, imageItems: images.filter(i => i.visible),
+        brokenImages: images.filter(i => i.complete && i.naturalWidth === 0), missingAlt: images.filter(i => i.visible && !i.alt).length },
       content: { emptyHeadings: [...document.querySelectorAll('h1,h2,h3,h4')].filter(el => visible(el) && !el.innerText.trim()).map(ref),
         termMatches, integrity: { textCharacters: visibleText.length, h1Count, headings: headingTexts.length,
           hasContactSignal, issues: contentIssues } },

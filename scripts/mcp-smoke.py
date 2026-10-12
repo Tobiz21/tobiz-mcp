@@ -25,6 +25,7 @@ REQUIRED_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference",
     "tobiz_release_design_gate",
+    "tobiz_audit_images",
 }
 
 

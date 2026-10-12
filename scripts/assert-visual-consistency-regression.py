@@ -17,6 +17,9 @@ expected = {
     "text_too_small",
     "excessive_section_gap",
     "image_aspect_distorted",
+    "image_low_resolution",
+    "image_crop_extreme",
+    "text_over_image_without_scrim",
 }
 assert expected <= codes, f"Visual audit missed: {sorted(expected - codes)}; got {sorted(codes)}"
 content_codes = {item["code"] for item in report["viewports"]["desktop"]["content"]["integrity"]["issues"]}
