@@ -1340,6 +1340,7 @@ class Service:
                 "safe_design_refinement",
                 "semantic_page_composition_audit",
                 "native_design_reference_comparison",
+                "unified_design_release_gate",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

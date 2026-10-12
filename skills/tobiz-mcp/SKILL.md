@@ -248,6 +248,11 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   `reference_structure_drift` или `reference_story_drift`. Поля из `block_differences` возвращай
   к эталону штатными настройками, а `visual_differences` проверяй на desktop и mobile.
 
+* **Выдать готовый сайт**: последней командой всегда вызывай `tobiz_release_design_gate` с целью
+  страницы, `source_terms` исходной тематики и эталонной страницей, если сайт строился по шаблону.
+  Выдавай ссылку клиенту только при `gate.verdict=ready`. При `review` исправь список
+  `improvements`, при `save_blocked` сначала устрани все `blockers`; не обходи гейт вручную.
+
 * **Собрать качественный черновик по брифу**: `tobiz_build_quality_page(apply=false)` выбирает
   проверенный шаблон, возвращает компактный рецепт и сгруппированный список фотослотов. Полный
   технический паспорт запрашивай только через `details=true`. Заполни `recipe`, укажи

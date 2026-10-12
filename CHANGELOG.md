@@ -4,6 +4,8 @@
 
 - Added semantic page-composition audit with goal-specific coverage, trust and section-order scoring.
 - Added native reference comparison for structure, section roles, block styles and rendered design profiles.
+- Added a unified design release gate covering rendered QA, composition, reference fidelity,
+  editor safety and unsaved draft detection.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

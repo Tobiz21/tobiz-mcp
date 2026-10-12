@@ -76,4 +76,4 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_editor_roundtrip_check', 'tobiz_build_quality_page',
             'tobiz_improve_page', 'tobiz_layout_registry', 'tobiz_repair_layout',
             'tobiz_refine_design', 'tobiz_audit_composition',
-            'tobiz_compare_design_reference'} <= set(names)
+            'tobiz_compare_design_reference', 'tobiz_release_design_gate'} <= set(names)

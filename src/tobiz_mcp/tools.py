@@ -13,6 +13,7 @@ from . import errors, log
 from .domain import blocks as block_domain
 from .domain import content as content_domain
 from .domain import composition as composition_domain
+from .domain import design_gate as design_gate_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
@@ -56,7 +57,7 @@ READ_TOOLS = {
     "tobiz_layout_registry", "tobiz_repair_layout",
     "tobiz_refine_design",
     "tobiz_audit_composition",
-    "tobiz_compare_design_reference",
+    "tobiz_compare_design_reference", "tobiz_release_design_gate",
 }
 
 
@@ -1284,6 +1285,50 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "target_has_unsaved_changes": target_draft.has_changes,
             },
         }
+
+    @tool("tobiz_release_design_gate", "Run the mandatory final acceptance gate for a native TOBIZ "
+          "page. Combines rendered desktop/mobile quality, semantic composition, optional reference "
+          "fidelity and editor roundtrip safety into one ready/review/save_blocked verdict. Does not "
+          "change the site or submit forms.")
+    async def tobiz_release_design_gate(
+            project_id: Id | None = None, page_id: Id = "",
+            goal: str = "lead_generation", source_terms: list[str] | None = None,
+            reference_project_id: Id | None = None, reference_page_id: Id = "",
+            screenshots: bool = True, check_editor: bool = True) -> dict[str, Any]:
+        if goal not in composition_domain.GOALS:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}",
+                "Используйте lead_generation, education или ecommerce")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        report = await service.inspect_page(
+            project_id, page_id, screenshot=screenshots,
+            viewports=["desktop", "mobile"], forbidden_terms=source_terms)
+        audit = audit_domain.compact(report)
+        composition = composition_domain.analyze(draft, goal)
+        reference_comparison = None
+        if reference_project_id is not None or reference_page_id:
+            if reference_project_id is None or not reference_page_id:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT, "Для эталона нужны reference_project_id и reference_page_id")
+            reference_project_id, _ = await service.resolve_page(
+                reference_project_id, reference_page_id)
+            reference_draft = await service.draft(reference_project_id, reference_page_id)
+            reference_report = await service.inspect_page(
+                reference_project_id, reference_page_id, screenshot=False,
+                viewports=["desktop", "mobile"])
+            reference_recipe = design_reference_domain.extract(
+                reference_draft, audit_domain.compact(reference_report), goal)
+            target_recipe = design_reference_domain.extract(draft, audit, goal)
+            reference_comparison = design_reference_domain.compare(
+                reference_recipe, target_recipe)
+        roundtrip = await service.editor_roundtrip(project_id, page_id) if check_editor else None
+        gate = design_gate_domain.evaluate(
+            audit, composition, reference_comparison, roundtrip,
+            has_unsaved_changes=draft.has_changes)
+        return {"gate": gate, "audit": audit, "composition": composition,
+                "reference_comparison": reference_comparison,
+                "editor_roundtrip": roundtrip}
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "
