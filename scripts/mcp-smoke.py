@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -21,12 +22,13 @@ REQUIRED_TOOLS = {
     "tobiz_layout_registry",
     "tobiz_repair_layout",
     "tobiz_refine_design",
+    "tobiz_audit_composition",
 }
 
 
 async def smoke() -> None:
     server = StdioServerParameters(
-        command="python",
+        command=sys.executable,
         args=["-m", "tobiz_mcp"],
         env={
             "TOBIZ_READ_ONLY": "0",

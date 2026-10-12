@@ -41,6 +41,7 @@ class FakeService:
             "safe_layout_repair",
             "page_wide_design_system_analysis",
             "safe_design_refinement",
+            "semantic_page_composition_audit",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

@@ -1338,6 +1338,7 @@ class Service:
                 "safe_layout_repair",
                 "page_wide_design_system_analysis",
                 "safe_design_refinement",
+                "semantic_page_composition_audit",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

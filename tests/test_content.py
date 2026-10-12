@@ -384,6 +384,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'safe_layout_repair' in result['features']
     assert 'page_wide_design_system_analysis' in result['features']
     assert 'safe_design_refinement' in result['features']
+    assert 'semantic_page_composition_audit' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

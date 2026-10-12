@@ -12,6 +12,7 @@ from typing import Annotated, Any, Callable
 from . import errors, log
 from .domain import blocks as block_domain
 from .domain import content as content_domain
+from .domain import composition as composition_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
@@ -53,6 +54,7 @@ READ_TOOLS = {
     "tobiz_improve_page",
     "tobiz_layout_registry", "tobiz_repair_layout",
     "tobiz_refine_design",
+    "tobiz_audit_composition",
 }
 
 
@@ -1229,6 +1231,20 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "score_delta": round(after["quality_score"]["overall"]
                                      - before["quality_score"]["overall"], 1),
                 "rollback": rollback, "editor_roundtrip": final_roundtrip}
+
+    @tool("tobiz_audit_composition", "Analyze the semantic architecture of a native TOBIZ page "
+          "without changing it. Classifies every block by role, checks topic coverage, trust signals, "
+          "section order and thin sections, then returns block-specific issues and a recommended native "
+          "story sequence. Goals: lead_generation, education or ecommerce. No custom code is generated.")
+    async def tobiz_audit_composition(project_id: Id | None = None, page_id: Id = "",
+                                      goal: str = "lead_generation") -> dict[str, Any]:
+        if goal not in composition_domain.GOALS:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}",
+                "Используйте lead_generation, education или ecommerce")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        return composition_domain.analyze(draft, goal)
 
     @tool("tobiz_delete_page",
           "Удалить страницу проекта. Необратимо: требует confirm=true, иначе вернёт отказ "
