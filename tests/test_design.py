@@ -80,6 +80,7 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_audit_images'} <= set(names)
     assert {'tobiz_plan_site', 'tobiz_compile_site_content', 'tobiz_validate_site_recipe',
             'tobiz_validate_media_recipe',
+            'tobiz_prepare_site_package',
             'tobiz_preflight_site_build',
             'tobiz_audit_claims',
             'tobiz_check_site_plan'} <= set(names)

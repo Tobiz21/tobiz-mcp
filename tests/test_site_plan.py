@@ -173,3 +173,22 @@ def test_unified_preflight_blocks_missing_seo_and_unsafe_link():
     codes = {item['code'] for item in result['blockers']}
     assert {'media_recipe_missing', 'seo_package_missing', 'unsafe_recipe_link'} <= codes
     assert result['ready_for_build'] is False
+
+
+def test_prepare_package_returns_clean_exact_fill_in_contract():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    package = site_plan.prepare_build_package(brief, plan, blueprint)
+    assert package['package_id'] == f"{plan['plan_id']}:v1"
+    assert package['recipe']['types'] == ['1154', '306']
+    assert all(slot['value'] == '' for slot in package['recipe']['slots'])
+    assert package['recipe']['slots'][0]['instruction']
+    assert package['media_recipe']['groups'][0]['assets'][0] == {
+        'path': '/bg_image', 'filename': '', 'width': 0, 'height': 0,
+        'subject': '', 'safe_text_area': False,
+    }
+    assert package['seo']['title'] == 'Онлайн-школа математики'
+    assert 'Курс математики' not in str(package['recipe'])

@@ -62,7 +62,7 @@ READ_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
-    "tobiz_validate_media_recipe", "tobiz_preflight_site_build",
+    "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -942,6 +942,18 @@ def register(mcp: Any, service: Service) -> list[str]:
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.validate_media_recipe(plan, blueprint, media_recipe)
+
+    @tool("tobiz_prepare_site_package", "Prepare the complete clean fill-in package for a new native "
+          "TOBIZ page in one call. Returns stable plan_id, locked template, every text/link slot with role "
+          "and mobile limit, every exact image path with visual requirements, SEO fields and missing client "
+          "evidence. Source-template copy is deliberately omitted. Read-only.")
+    async def tobiz_prepare_site_package(brief: dict[str, Any], goal: str = "") -> dict[str, Any]:
+        plan = await tobiz_plan_site(brief, goal)
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        return site_plan_domain.prepare_build_package(brief, plan, blueprint)
 
     @tool("tobiz_preflight_site_build", "One-call read-only gate for the complete site package before "
           "creating a TOBIZ page. Validates plan_id, copy, factual claims, media assignments, SEO lengths, "

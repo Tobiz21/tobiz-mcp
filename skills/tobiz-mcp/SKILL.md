@@ -216,7 +216,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 ## Короткие рецепты
 
-* **Спланировать новый сайт до сборки**: начни с `tobiz_plan_site(brief=...)`. Зафиксируй
+* **Спланировать новый сайт до сборки**: для быстрого старта вызови
+  `tobiz_prepare_site_package(brief=...)`. Он сразу вернет чистые `recipe`, `media_recipe`, `seo`,
+  `plan_id` и `missing_evidence`, не перенося исходный текст шаблона. Для подробного разбора можно
+  отдельно вызвать `tobiz_plan_site(brief=...)`. Зафиксируй
   возвращенный `plan_id`, не меняй выбранную структуру и подготовь тексты и фотографии по
   `sections`, `recipe` и `photo_requirements`. Перед написанием текста проверь `content_brief` или
   вызови `tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси только

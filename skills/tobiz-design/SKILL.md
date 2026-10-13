@@ -10,7 +10,9 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 
 ## Перед сборкой
 
-Сначала вызови `tobiz_plan_site`, затем проверь вложенный `content_brief` или вызови
+Для быстрой полной сборки сначала вызови `tobiz_prepare_site_package`; он вернет чистые формы всех
+текстов, изображений и SEO без контента исходного шаблона. Для подробного планирования вызови
+`tobiz_plan_site`, затем проверь вложенный `content_brief` или вызови
 `tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси `missing_evidence` и не
 заменяй отсутствующие факты выдуманными ценами, отзывами, опытом, гарантиями или контактами.
 Сборку запускай только с возвращенным `plan_id`.

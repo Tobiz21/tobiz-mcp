@@ -422,3 +422,63 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         "seo": {"provided": bool(seo_values)}, "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
     }
+
+
+def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
+                          blueprint: dict[str, Any]) -> dict[str, Any]:
+    """Create a clean fill-in package without carrying source-template copy forward."""
+    instructions = {
+        (slot.get("block_index"), slot.get("path")): slot
+        for slot in (plan.get("content_brief") or {}).get("slots") or []
+    }
+    recipe_slots = []
+    for slot in (blueprint.get("recipe") or {}).get("slots") or []:
+        key = (slot.get("block_index"), slot.get("path"))
+        guidance = instructions.get(key, {})
+        recipe_slots.append({
+            "block_index": slot.get("block_index"), "path": slot.get("path"),
+            "kind": slot.get("kind"), "role": slot.get("role"), "value": "",
+            "instruction": guidance.get("instruction"),
+            **({"recommended_max_chars": slot["recommended_max_chars"]}
+               if slot.get("recommended_max_chars") else {}),
+        })
+    media_groups = []
+    requirements = {
+        (item.get("block_index"), item.get("path_pattern")): item
+        for item in plan.get("photo_requirements") or []
+    }
+    for group in blueprint.get("photo_slots") or []:
+        requirement = requirements.get((group.get("block_index"), group.get("path_pattern")), {})
+        assets = []
+        for path in group.get("paths") or []:
+            asset = {"path": path, "filename": "", "width": 0, "height": 0,
+                     "subject": ""}
+            if group.get("role") == "background":
+                asset["safe_text_area"] = False
+            assets.append(asset)
+        media_groups.append({
+            "block_index": group.get("block_index"), "path_pattern": group.get("path_pattern"),
+            "role": group.get("role"), "required_assets": len(assets),
+            "orientation": requirement.get("orientation"), "ratio": requirement.get("ratio"),
+            "safe_zone": requirement.get("safe_zone"), "brief": requirement.get("brief"),
+            "assets": assets,
+        })
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+    topic = str(brief.get("industry") or brief.get("offer") or facts.get("offer") or "").strip()
+    return {
+        "package_id": f"{plan.get('plan_id')}:v1", "plan_id": plan.get("plan_id"),
+        "template": plan.get("template"), "mode": "prototype" if brief.get("allow_placeholders") is True else "quality",
+        "recipe": {"types": list((blueprint.get("recipe") or {}).get("types") or []),
+                   "slots": recipe_slots},
+        "media_recipe": {"groups": media_groups},
+        "seo": {"title": topic, "dir": "", "seo_title": topic,
+                "seo_description": "", "og_image": ""},
+        "missing_evidence": (plan.get("content_brief") or {}).get("missing_evidence") or [],
+        "workflow": [
+            "Fill only confirmed values from the brief into recipe slots.",
+            "Upload or prepare every media asset and fill its actual filename and dimensions.",
+            "Complete SEO fields without unsupported claims.",
+            "Run tobiz_preflight_site_build and fix blockers.",
+            "Run tobiz_build_quality_page once with the validated package and plan_id.",
+        ],
+    }
