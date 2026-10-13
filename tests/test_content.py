@@ -407,6 +407,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'deterministic_native_site_planning' in result['features']
     assert 'evidence_bound_content_compiler' in result['features']
     assert 'brief_bound_claim_integrity_audit' in result['features']
+    assert 'pre_copy_recipe_validation' in result['features']
     assert 'post_build_plan_conformance' in result['features']
 
 

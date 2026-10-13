@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Any
 
-from . import composition
+from . import claim_audit, composition, content
 
 
 PHOTO_RULES = {
@@ -183,4 +183,68 @@ def compare(plan: dict[str, Any], target_draft, target_composition: dict[str, An
         "plan_id": plan.get("plan_id"), "matches": not issues,
         "issues": issues, "expected_types": expected_types, "target_types": target_types,
         "expected_roles": expected_roles, "target_roles": target_roles,
+    }
+
+
+def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict[str, Any],
+                    recipe: dict[str, Any]) -> dict[str, Any]:
+    """Validate proposed copy against native slots before creating a TOBIZ page."""
+    coverage = content.recipe_coverage(blueprint, recipe)
+    expected = {
+        (slot.get("block_index"), slot.get("path")): slot
+        for slot in (blueprint.get("recipe") or {}).get("slots") or []
+    }
+    issues = []
+    lengths: dict[tuple[int, str], list[int]] = {}
+    for slot in recipe.get("slots") or []:
+        if not isinstance(slot, dict):
+            continue
+        key = (slot.get("block_index"), slot.get("path"))
+        spec = expected.get(key)
+        if spec is None:
+            issues.append({"priority": "must_fix", "code": "unknown_recipe_slot",
+                           "block_index": key[0], "path": key[1],
+                           "action": "Использовать только слот из blueprint выбранного шаблона."})
+            continue
+        value = str(slot.get("value") or "").strip()
+        role = str(spec.get("role") or "text")
+        limit = spec.get("recommended_max_chars")
+        if limit and len(value) > int(limit):
+            ratio = len(value) / int(limit)
+            issues.append({
+                "priority": "must_fix" if ratio > 1.5 else "improve",
+                "code": "recipe_text_over_mobile_limit", "block_index": key[0], "path": key[1],
+                "chars": len(value), "recommended_max_chars": int(limit),
+                "action": "Сократить текст по смыслу и повторно проверить мобильную верстку.",
+            })
+        if role == "button" and value.lower().replace("ё", "е") in {
+                "подробнее", "узнать больше", "нажмите", "перейти"}:
+            issues.append({"priority": "improve", "code": "generic_recipe_cta",
+                           "block_index": key[0], "path": key[1],
+                           "action": "Назвать конкретное действие пользователя в контексте секции."})
+        if role in {"card_title", "body"}:
+            lengths.setdefault((int(key[0]), role), []).append(len(value))
+    for (block_index, role), values in lengths.items():
+        threshold = 35 if role == "card_title" else 110
+        if len(values) > 1 and max(values) - min(values) > threshold:
+            issues.append({"priority": "improve", "code": "unbalanced_card_copy",
+                           "block_index": block_index, "field_role": role,
+                           "min_chars": min(values), "max_chars": max(values),
+                           "action": "Сбалансировать объем соседних карточек без добавления пустых фраз."})
+    claims = claim_audit.analyze_recipe(recipe, brief)
+    issues.extend(claims["issues"])
+    if not coverage.get("valid_structure"):
+        issues.append({"priority": "must_fix", "code": "recipe_structure_mismatch",
+                       "action": "Вернуть последовательность типов выбранного шаблона."})
+    if not coverage.get("complete"):
+        issues.append({"priority": "must_fix", "code": "recipe_incomplete",
+                       "action": "Заменить все meaningful-поля, отмеченные в missing и unchanged."})
+    evidence = plan.get("content_brief") or {}
+    blockers = [item for item in issues if item.get("priority") == "must_fix"]
+    return {
+        "plan_id": plan.get("plan_id"), "ready_for_build": not blockers,
+        "coverage": coverage, "claims": claims,
+        "evidence_ready": bool(evidence.get("ready_for_copywriting")),
+        "missing_evidence": evidence.get("missing_evidence") or [],
+        "issues": issues, "blockers": blockers,
     }

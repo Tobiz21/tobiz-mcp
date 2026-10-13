@@ -82,3 +82,28 @@ def analyze(draft, brief: dict[str, Any]) -> dict[str, Any]:
         "checked_kinds": [item[0] for item in PATTERNS],
         "rule": "Отсутствие факта в брифе блокирует выдачу, но инструмент ничего не изменяет.",
     }
+
+
+def analyze_recipe(recipe: dict[str, Any], brief: dict[str, Any]) -> dict[str, Any]:
+    """Check proposed native slot values before a page is copied."""
+    approved_text = json.dumps(brief, ensure_ascii=False, sort_keys=True)
+    approved = {(item["kind"], item["canonical"]) for item in _claims(approved_text)}
+    claims, issues = [], []
+    for slot in recipe.get("slots") or []:
+        if not isinstance(slot, dict) or not isinstance(slot.get("value"), str):
+            continue
+        for item in _claims(_plain(slot["value"])):
+            supported = (item["kind"], item["canonical"]) in approved
+            record = {"block_index": slot.get("block_index"), "path": slot.get("path"),
+                      **item, "supported": supported}
+            claims.append(record)
+            if not supported:
+                issues.append({
+                    "priority": "must_fix", "code": f"unsupported_{item['kind']}_claim",
+                    "block_index": slot.get("block_index"), "path": slot.get("path"),
+                    "value": item["value"],
+                    "action": "Добавить подтверждение в бриф или изменить текст до создания страницы.",
+                })
+    return {"ready": not issues, "claims": claims, "issues": issues,
+            "supported": sum(1 for item in claims if item["supported"]),
+            "unsupported": len(issues)}

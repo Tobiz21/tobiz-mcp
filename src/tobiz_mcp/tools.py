@@ -61,7 +61,8 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
-    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_audit_claims", "tobiz_check_site_plan",
+    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
+    "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
 
@@ -913,6 +914,20 @@ def register(mcp: Any, service: Service) -> list[str]:
             "photo_requirements": plan["photo_requirements"],
         }
 
+    @tool("tobiz_validate_site_recipe", "Validate proposed native-template copy before creating a page. "
+          "Checks the locked block sequence, meaningful-slot coverage, mobile text limits, card-copy balance, "
+          "CTA specificity and unsupported factual claims. Read-only; returns exact slots and never rewrites text.")
+    async def tobiz_validate_site_recipe(brief: dict[str, Any], recipe: dict[str, Any],
+                                         goal: str = "") -> dict[str, Any]:
+        if not isinstance(recipe, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "recipe must be an object")
+        plan = await tobiz_plan_site(brief, goal)
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        return site_plan_domain.validate_recipe(brief, plan, blueprint, recipe)
+
     @tool("tobiz_audit_claims", "Read-only factual integrity audit for a TOBIZ page. Finds phones, emails, "
           "prices, discounts, experience, durations and numeric results that are not present in the approved "
           "brief. Returns the exact block and native field; never edits copy or invents replacements.")
@@ -999,6 +1014,8 @@ def register(mcp: Any, service: Service) -> list[str]:
         coverage_recipe = recipe or {
             "types": blueprint.get("recipe", {}).get("types", []), "slots": []}
         coverage = content_domain.recipe_coverage(blueprint, coverage_recipe)
+        recipe_validation = (site_plan_domain.validate_recipe(
+            brief, site_plan, blueprint, recipe) if recipe else None)
         if apply and not recipe:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT,
@@ -1011,6 +1028,13 @@ def register(mcp: Any, service: Service) -> list[str]:
                 f"Рецепт заполнен не полностью: {coverage['replaced']} из {coverage['required']}",
                 "Замените поля из missing и unchanged; страница еще не создана",
                 raw=coverage,
+            )
+        if apply and recipe_validation and recipe_validation.get("blockers"):
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Контентный рецепт не прошел предварительную проверку",
+                "Исправьте blockers из tobiz_validate_site_recipe; страница еще не создана",
+                raw=recipe_validation,
             )
         if apply and not replacement_image:
             slots = recipe.get("slots", []) if isinstance(recipe, dict) else []
@@ -1039,6 +1063,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             result.pop("passport", None)
         result["blueprint"] = blueprint
         result["site_plan"] = site_plan
+        result["recipe_validation"] = recipe_validation
         result["recipe_coverage"] = coverage if recipe else {
             key: value for key, value in coverage.items()
             if key not in {"missing", "unchanged"}

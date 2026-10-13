@@ -48,6 +48,7 @@ class FakeService:
             "deterministic_native_site_planning",
             "evidence_bound_content_compiler",
             "brief_bound_claim_integrity_audit",
+            "pre_copy_recipe_validation",
             "post_build_plan_conformance",
         ]
         if self.missing_feature:

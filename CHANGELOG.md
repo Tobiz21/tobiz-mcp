@@ -16,6 +16,8 @@
   missing proof before copywriting and prevents fabricated prices, reviews, credentials and guarantees.
 - Added a brief-bound factual claim audit for phone numbers, email addresses, prices, discounts,
   experience, durations and numeric results; unsupported claims now block the unified release gate.
+- Added pre-copy recipe validation for native structure, meaningful slot coverage, mobile copy limits,
+  card balance, contextual CTAs and brief-bound factual claims.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

@@ -49,3 +49,33 @@ def test_plan_comparison_detects_structure_and_role_drift():
     source.order.reverse()
     result = site_plan.compare(plan, source, {'sections': [{'role': 'cta'}, {'role': 'hero'}]})
     assert {item['code'] for item in result['issues']} == {'plan_structure_drift', 'plan_role_drift'}
+
+
+def test_recipe_preflight_blocks_unsupported_claim_before_copy():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'goal': 'Запись на курс'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    assert result['ready_for_build'] is False
+    assert 'unsupported_price_claim' in {item['code'] for item in result['blockers']}
+
+
+def test_recipe_preflight_accepts_supported_claim_and_complete_structure():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    assert result['ready_for_build'] is True
+    assert result['claims']['unsupported'] == 0
