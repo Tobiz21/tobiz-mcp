@@ -222,7 +222,11 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   вызови `tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси только
   `missing_evidence`; не заполняй пробелы выдуманными ценами, отзывами, опытом, гарантиями,
   сроками или контактами. Заполни `recipe`, вызови `tobiz_validate_site_recipe` и устрани
-  `blockers` до копирования страницы. Передай `plan_id` в `tobiz_build_quality_page`.
+  `blockers` до копирования страницы. Затем заполни `media_recipe` по точным `photo_requirements`,
+  вызови `tobiz_validate_media_recipe` и исправь разрешение, ориентацию, безопасную область,
+  пропорции, заглушки и повторы. Передай `plan_id`, `recipe` и проверенный `media_recipe` в
+  `tobiz_build_quality_page`. Для чернового каркаса с одной заглушкой явно укажи в брифе
+  `allow_placeholders=true`; не называй такой результат качественной сборкой.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,
   `image_audit`, `reference_comparison`, `design_gate` или вызови `tobiz_check_site_plan`.
   Перед выдачей обязательно проверь `claim_audit`: любая цена, скидка, статистика, длительность,

@@ -79,3 +79,51 @@ def test_recipe_preflight_accepts_supported_claim_and_complete_structure():
     result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
     assert result['ready_for_build'] is True
     assert result['claims']['unsupported'] == 0
+
+
+def test_media_preflight_accepts_complete_high_resolution_assignment():
+    plan = {'plan_id': 'media-plan'}
+    blueprint = {'photo_slots': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'role': 'background',
+        'paths': ['/bg_image'], 'slots': 1,
+    }, {
+        'block_index': 1, 'path_pattern': '/items/0/image', 'role': 'catalog_image',
+        'paths': ['/items/0/image', '/items/1/image'], 'slots': 2,
+    }]}
+    media_recipe = {'groups': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
+            'filename': 'hero.webp', 'width': 1920, 'height': 1080,
+            'subject': 'Учитель у доски', 'safe_text_area': True,
+        }],
+    }, {
+        'block_index': 1, 'path_pattern': '/items/0/image', 'assets': [{
+            'filename': 'course-1.webp', 'width': 1000, 'height': 1000,
+            'subject': 'Тетрадь ученика',
+        }, {
+            'filename': 'course-2.webp', 'width': 1000, 'height': 1000,
+            'subject': 'Онлайн-занятие',
+        }],
+    }]}
+    result = site_plan.validate_media_recipe(plan, blueprint, media_recipe)
+    assert result['ready_for_build'] is True
+    assert result['assigned_slots'] == 3
+    merged = site_plan.merge_media_recipe({'types': ['1'], 'slots': []}, result)
+    assert merged['slots'][0] == {
+        'block_index': 0, 'path': '/bg_image', 'value': 'hero.webp'}
+
+
+def test_media_preflight_blocks_placeholders_bad_ratio_and_missing_safe_area():
+    blueprint = {'photo_slots': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'role': 'background',
+        'paths': ['/bg_image'], 'slots': 1,
+    }]}
+    result = site_plan.validate_media_recipe({'plan_id': 'x'}, blueprint, {'groups': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
+            'filename': 'gray-placeholder.png', 'width': 800, 'height': 1200,
+            'subject': '',
+        }],
+    }]})
+    codes = {item['code'] for item in result['blockers']}
+    assert {'media_placeholder_used', 'media_resolution_too_low', 'background_not_wide',
+            'background_safe_area_unconfirmed'} <= codes
+    assert result['ready_for_build'] is False

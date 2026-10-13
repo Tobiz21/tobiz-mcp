@@ -29,6 +29,7 @@ REQUIRED_TOOLS = {
     "tobiz_plan_site",
     "tobiz_compile_site_content",
     "tobiz_validate_site_recipe",
+    "tobiz_validate_media_recipe",
     "tobiz_audit_claims",
     "tobiz_check_site_plan",
 }

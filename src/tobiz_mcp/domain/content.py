@@ -142,8 +142,10 @@ def compact_blueprint(passport_data, content_data):
                     "role": field.get("role"),
                     "image_hint": field.get("image_hint"),
                     "slots": 0,
+                    "paths": [],
                 })
                 group["slots"] += 1
+                group["paths"].append(path)
     return {
         "hash": passport_data.get("hash"),
         "recipe": {"types": block_types, "slots": recipe_slots},

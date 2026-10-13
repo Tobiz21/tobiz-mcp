@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from . import claim_audit, composition, content
@@ -248,3 +249,105 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
         "missing_evidence": evidence.get("missing_evidence") or [],
         "issues": issues, "blockers": blockers,
     }
+
+
+def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
+                          media_recipe: dict[str, Any]) -> dict[str, Any]:
+    """Validate image assignments before a native template is copied."""
+    expected = {
+        (item.get("block_index"), item.get("path_pattern")): item
+        for item in blueprint.get("photo_slots") or []
+    }
+    supplied = {
+        (item.get("block_index"), item.get("path_pattern")): item
+        for item in media_recipe.get("groups") or [] if isinstance(item, dict)
+    } if isinstance(media_recipe, dict) else {}
+    issues: list[dict[str, Any]] = []
+    assignments: list[dict[str, Any]] = []
+    filenames: dict[str, list[tuple[Any, Any]]] = {}
+    for key, spec in expected.items():
+        group = supplied.get(key)
+        if group is None:
+            issues.append({"priority": "must_fix", "code": "media_group_missing",
+                           "block_index": key[0], "path_pattern": key[1],
+                           "action": "Назначить изображения всем слотам этой группы."})
+            continue
+        assets = group.get("assets") if isinstance(group.get("assets"), list) else []
+        paths = list(spec.get("paths") or [])
+        if len(assets) != len(paths):
+            issues.append({"priority": "must_fix", "code": "media_asset_count_mismatch",
+                           "block_index": key[0], "path_pattern": key[1],
+                           "required": len(paths), "supplied": len(assets),
+                           "action": "Передать по одному изображению для каждого штатного фотослота."})
+        ratios = []
+        for index, asset in enumerate(assets[:len(paths)]):
+            if not isinstance(asset, dict):
+                issues.append({"priority": "must_fix", "code": "invalid_media_asset",
+                               "block_index": key[0], "path": paths[index]})
+                continue
+            filename = str(asset.get("filename") or "").strip()
+            width = asset.get("width")
+            height = asset.get("height")
+            if not re.fullmatch(r"[A-Za-z0-9_. -]+\.(?:png|jpg|jpeg|webp)", filename, re.I):
+                issues.append({"priority": "must_fix", "code": "invalid_media_filename",
+                               "block_index": key[0], "path": paths[index],
+                               "action": "Использовать имя файла, возвращенное tobiz_upload_image."})
+                continue
+            if re.search(r"(?:null|placeholder|grey|gray|заглуш)", filename, re.I):
+                issues.append({"priority": "must_fix", "code": "media_placeholder_used",
+                               "block_index": key[0], "path": paths[index],
+                               "action": "Заменить заглушку содержательным изображением перед публикацией."})
+            if not isinstance(width, int) or not isinstance(height, int) or width <= 0 or height <= 0:
+                issues.append({"priority": "must_fix", "code": "media_dimensions_missing",
+                               "block_index": key[0], "path": paths[index],
+                               "action": "Передать фактические width и height загруженного файла."})
+            else:
+                ratio = width / height
+                ratios.append(ratio)
+                role = spec.get("role") or "content_image"
+                min_width = 1600 if role == "background" else 200 if role == "logo" else 800
+                if width < min_width:
+                    issues.append({"priority": "must_fix", "code": "media_resolution_too_low",
+                                   "block_index": key[0], "path": paths[index],
+                                   "width": width, "required_width": min_width,
+                                   "action": "Загрузить изображение достаточного разрешения для штатного слота."})
+                if role == "background" and ratio < 1.5:
+                    issues.append({"priority": "must_fix", "code": "background_not_wide",
+                                   "block_index": key[0], "path": paths[index],
+                                   "ratio": round(ratio, 3),
+                                   "action": "Использовать широкий кадр для фонового изображения."})
+                if role == "background" and asset.get("safe_text_area") is not True:
+                    issues.append({"priority": "must_fix", "code": "background_safe_area_unconfirmed",
+                                   "block_index": key[0], "path": paths[index],
+                                   "action": "Подтвердить свободную область под текст после проверки кадра."})
+            if not str(asset.get("subject") or "").strip():
+                issues.append({"priority": "improve", "code": "media_subject_missing",
+                               "block_index": key[0], "path": paths[index],
+                               "action": "Кратко описать главный объект кадра для смысловой проверки."})
+            filenames.setdefault(filename.lower(), []).append(key)
+            assignments.append({"block_index": key[0], "path": paths[index], "value": filename})
+        if len(ratios) > 1 and max(ratios) - min(ratios) > .08:
+            issues.append({"priority": "must_fix", "code": "media_group_ratios_inconsistent",
+                           "block_index": key[0], "path_pattern": key[1],
+                           "ratios": [round(value, 3) for value in ratios],
+                           "action": "Подготовить изображения карточек в единой пропорции."})
+    for key in sorted(set(supplied) - set(expected), key=str):
+        issues.append({"priority": "must_fix", "code": "unknown_media_group",
+                       "block_index": key[0], "path_pattern": key[1],
+                       "action": "Использовать только фотогруппу из photo_requirements плана."})
+    for filename, groups in filenames.items():
+        if filename and len(set(groups)) > 1:
+            issues.append({"priority": "improve", "code": "media_reused_across_sections",
+                           "filename": filename, "uses": len(groups),
+                           "action": "Не повторять один кадр в разных смысловых секциях без причины."})
+    blockers = [item for item in issues if item.get("priority") == "must_fix"]
+    return {"plan_id": plan.get("plan_id"), "ready_for_build": not blockers,
+            "required_groups": len(expected), "assigned_slots": len(assignments),
+            "assignments": assignments, "issues": issues, "blockers": blockers}
+
+
+def merge_media_recipe(recipe: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
+    """Append validated image assignments to the positional native recipe."""
+    merged = {**recipe, "slots": list(recipe.get("slots") or [])}
+    merged["slots"].extend(validation.get("assignments") or [])
+    return merged

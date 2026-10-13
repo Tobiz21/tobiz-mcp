@@ -62,6 +62,7 @@ READ_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
+    "tobiz_validate_media_recipe",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -928,6 +929,20 @@ def register(mcp: Any, service: Service) -> list[str]:
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.validate_recipe(brief, plan, blueprint, recipe)
 
+    @tool("tobiz_validate_media_recipe", "Validate image assignments before creating a page. Checks exact "
+          "native-slot coverage, uploaded filenames, pixel dimensions, background orientation and text-safe "
+          "area, consistent card ratios, placeholders and cross-section reuse. Read-only.")
+    async def tobiz_validate_media_recipe(brief: dict[str, Any], media_recipe: dict[str, Any],
+                                          goal: str = "") -> dict[str, Any]:
+        if not isinstance(media_recipe, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "media_recipe must be an object")
+        plan = await tobiz_plan_site(brief, goal)
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        return site_plan_domain.validate_media_recipe(plan, blueprint, media_recipe)
+
     @tool("tobiz_audit_claims", "Read-only factual integrity audit for a TOBIZ page. Finds phones, emails, "
           "prices, discounts, experience, durations and numeric results that are not present in the approved "
           "brief. Returns the exact block and native field; never edits copy or invents replacements.")
@@ -989,6 +1004,7 @@ def register(mcp: Any, service: Service) -> list[str]:
           "round-trip safety check. No custom HTML/CSS/JS or new blocks are added.")
     async def tobiz_build_quality_page(brief: dict[str, Any], target_project_id: Id = "",
                                        title: str = "", recipe: dict[str, Any] | None = None,
+                                       media_recipe: dict[str, Any] | None = None,
                                        replacement_image: str | None = None,
                                        source_terms: list[str] | None = None,
                                        seo: dict[str, Any] | None = None,
@@ -1016,6 +1032,8 @@ def register(mcp: Any, service: Service) -> list[str]:
         coverage = content_domain.recipe_coverage(blueprint, coverage_recipe)
         recipe_validation = (site_plan_domain.validate_recipe(
             brief, site_plan, blueprint, recipe) if recipe else None)
+        media_validation = (site_plan_domain.validate_media_recipe(
+            site_plan, blueprint, media_recipe) if media_recipe else None)
         if apply and not recipe:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT,
@@ -1036,6 +1054,23 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "Исправьте blockers из tobiz_validate_site_recipe; страница еще не создана",
                 raw=recipe_validation,
             )
+        has_photo_slots = bool(blueprint.get("photo_slots"))
+        allow_placeholders = brief.get("allow_placeholders") is True
+        if apply and has_photo_slots and not media_recipe and not allow_placeholders:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Для качественной сборки требуется media_recipe",
+                "Заполните photo_requirements, вызовите tobiz_validate_media_recipe и повторите",
+            )
+        if apply and media_validation and media_validation.get("blockers"):
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Медиарецепт не прошел предварительную проверку",
+                "Исправьте blockers из tobiz_validate_media_recipe; страница еще не создана",
+                raw=media_validation,
+            )
+        if recipe and media_validation and not media_validation.get("blockers"):
+            recipe = site_plan_domain.merge_media_recipe(recipe, media_validation)
         if apply and not replacement_image:
             slots = recipe.get("slots", []) if isinstance(recipe, dict) else []
             has_images = any("image" in str(slot.get("path") or "").lower()
@@ -1064,6 +1099,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["blueprint"] = blueprint
         result["site_plan"] = site_plan
         result["recipe_validation"] = recipe_validation
+        result["media_validation"] = media_validation
         result["recipe_coverage"] = coverage if recipe else {
             key: value for key, value in coverage.items()
             if key not in {"missing", "unchanged"}
@@ -1079,7 +1115,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
             "complete_recipe_before_copy", "desktop_mobile_audit", "editor_roundtrip_safe",
             "content_integrity_review", "brief_bound_claim_integrity",
-            "visual_consistency_review",
+            "pre_copy_media_validation", "visual_consistency_review",
         ]
         if apply:
             page = result.get("page") or {}

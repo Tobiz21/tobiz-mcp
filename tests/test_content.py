@@ -136,6 +136,8 @@ def test_compact_blueprint_groups_image_variants_and_omits_empty_text():
     assert result['image_slots'] == 3
     assert result['image_groups'] == 1
     assert result['photo_slots'][0]['path_pattern'] == '/arr1/0/image1'
+    assert result['photo_slots'][0]['paths'] == [
+        '/arr1/0/image1', '/arr1/0/image1_1', '/arr1/0/image1_2']
     assert result['photo_slots'][0]['slots'] == 3
 
 
@@ -408,6 +410,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'evidence_bound_content_compiler' in result['features']
     assert 'brief_bound_claim_integrity_audit' in result['features']
     assert 'pre_copy_recipe_validation' in result['features']
+    assert 'pre_copy_media_validation' in result['features']
     assert 'post_build_plan_conformance' in result['features']
 
 

@@ -18,6 +18,8 @@
   experience, durations and numeric results; unsupported claims now block the unified release gate.
 - Added pre-copy recipe validation for native structure, meaningful slot coverage, mobile copy limits,
   card balance, contextual CTAs and brief-bound factual claims.
+- Added pre-copy media-recipe validation for exact native image coverage, resolution, orientation,
+  background text-safe areas, consistent card ratios, placeholders and cross-section reuse.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.
