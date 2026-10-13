@@ -466,7 +466,8 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
     facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
     topic = str(brief.get("industry") or brief.get("offer") or facts.get("offer") or "").strip()
     return {
-        "package_id": f"{plan.get('plan_id')}:v1", "plan_id": plan.get("plan_id"),
+        "schema_version": 1, "package_id": f"{plan.get('plan_id')}:v1",
+        "plan_id": plan.get("plan_id"), "brief": brief,
         "template": plan.get("template"), "mode": "prototype" if brief.get("allow_placeholders") is True else "quality",
         "recipe": {"types": list((blueprint.get("recipe") or {}).get("types") or []),
                    "slots": recipe_slots},
@@ -482,3 +483,33 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "Run tobiz_build_quality_page once with the validated package and plan_id.",
         ],
     }
+
+
+def validate_package_envelope(package: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    """Reject stale or mixed packages before their editable payload is used."""
+    issues = []
+    expected_plan_id = str(plan.get("plan_id") or "")
+    expected_package_id = f"{expected_plan_id}:v1"
+    if package.get("schema_version") != 1:
+        issues.append({"priority": "must_fix", "code": "unsupported_package_schema",
+                       "expected": 1, "actual": package.get("schema_version"),
+                       "action": "Повторно вызовите tobiz_prepare_site_package."})
+    if str(package.get("plan_id") or "") != expected_plan_id:
+        issues.append({"priority": "must_fix", "code": "package_plan_mismatch",
+                       "expected": expected_plan_id, "actual": package.get("plan_id"),
+                       "action": "Не смешивать пакет с другим брифом или шаблоном."})
+    if str(package.get("package_id") or "") != expected_package_id:
+        issues.append({"priority": "must_fix", "code": "package_identity_mismatch",
+                       "expected": expected_package_id, "actual": package.get("package_id"),
+                       "action": "Использовать неизмененный идентификатор подготовленного пакета."})
+    expected_template = plan.get("template") or {}
+    actual_template = package.get("template") if isinstance(package.get("template"), dict) else {}
+    for field in ("project_id", "page_id"):
+        if str(actual_template.get(field) or "") != str(expected_template.get(field) or ""):
+            issues.append({"priority": "must_fix", "code": "package_template_mismatch",
+                           "field": field, "expected": expected_template.get(field),
+                           "actual": actual_template.get(field),
+                           "action": "Повторно подготовить пакет для текущей библиотеки шаблонов."})
+    blockers = [item for item in issues if item.get("priority") == "must_fix"]
+    return {"valid": not blockers, "expected_package_id": expected_package_id,
+            "issues": issues, "blockers": blockers}

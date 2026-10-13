@@ -82,5 +82,6 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_validate_media_recipe',
             'tobiz_prepare_site_package',
             'tobiz_preflight_site_build',
+            'tobiz_build_site_package',
             'tobiz_audit_claims',
             'tobiz_check_site_plan'} <= set(names)

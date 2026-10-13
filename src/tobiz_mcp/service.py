@@ -1349,6 +1349,7 @@ class Service:
                 "pre_copy_media_validation",
                 "unified_pre_copy_build_gate",
                 "one_call_site_package_scaffold",
+                "direct_validated_site_package_build",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

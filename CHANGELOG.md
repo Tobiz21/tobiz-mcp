@@ -24,6 +24,8 @@
   and unsafe links, and wired the same verdict into the quality-page builder.
 - Added one-call clean site-package scaffolding with exact copy, media and SEO fields while omitting
   all source-template copy to prevent accidental topic leakage.
+- Added direct preview/build from the filled site package with schema, plan and template identity
+  verification before the shared preflight and native one-save pipeline.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

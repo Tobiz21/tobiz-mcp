@@ -182,6 +182,8 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     blueprint = compact_blueprint(passport(source), content_map(source))
     plan = site_plan.build(brief, selection, selected, blueprint, source)
     package = site_plan.prepare_build_package(brief, plan, blueprint)
+    assert package['schema_version'] == 1
+    assert package['brief'] == brief
     assert package['package_id'] == f"{plan['plan_id']}:v1"
     assert package['recipe']['types'] == ['1154', '306']
     assert all(slot['value'] == '' for slot in package['recipe']['slots'])
@@ -192,3 +194,16 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     }
     assert package['seo']['title'] == 'Онлайн-школа математики'
     assert 'Курс математики' not in str(package['recipe'])
+
+
+def test_package_envelope_rejects_stale_plan_and_template():
+    plan = {'plan_id': 'fresh', 'template': {'project_id': '1', 'page_id': '2'}}
+    valid = {'schema_version': 1, 'package_id': 'fresh:v1', 'plan_id': 'fresh',
+             'template': {'project_id': '1', 'page_id': '2'}}
+    assert site_plan.validate_package_envelope(valid, plan)['valid'] is True
+    stale = {**valid, 'package_id': 'old:v1', 'plan_id': 'old',
+             'template': {'project_id': '1', 'page_id': '9'}}
+    result = site_plan.validate_package_envelope(stale, plan)
+    assert result['valid'] is False
+    assert {item['code'] for item in result['blockers']} == {
+        'package_plan_mismatch', 'package_identity_mismatch', 'package_template_mismatch'}

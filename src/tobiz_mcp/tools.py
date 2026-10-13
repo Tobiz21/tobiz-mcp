@@ -63,6 +63,7 @@ READ_TOOLS = {
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
+    "tobiz_build_site_package",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -954,6 +955,48 @@ def register(mcp: Any, service: Service) -> list[str]:
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.prepare_build_package(brief, plan, blueprint)
+
+    @tool("tobiz_build_site_package", "Preview or build directly from the complete object returned by "
+          "tobiz_prepare_site_package. Recomputes the plan, rejects stale or mixed package/template IDs, "
+          "runs the unified preflight and delegates to the native one-save quality pipeline. Fill the "
+          "package in place; do not manually unpack its fields. No custom HTML/CSS/JS is added.")
+    async def tobiz_build_site_package(package: dict[str, Any], target_project_id: Id = "",
+                                       source_terms: list[str] | None = None,
+                                       apply: bool = False,
+                                       viewports: list[str] | None = None,
+                                       details: bool = False) -> dict[str, Any]:
+        if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте полный пакет из tobiz_prepare_site_package")
+        brief = package["brief"]
+        plan = await tobiz_plan_site(brief)
+        envelope = site_plan_domain.validate_package_envelope(package, plan)
+        if envelope["blockers"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "Пакет устарел или относится к другому плану",
+                "Повторно вызовите tobiz_prepare_site_package и перенесите подтвержденные значения",
+                raw=envelope,
+            )
+        recipe = package.get("recipe")
+        media_recipe = package.get("media_recipe")
+        seo = package.get("seo")
+        preflight = await tobiz_preflight_site_build(
+            brief=brief, recipe=recipe, media_recipe=media_recipe, seo=seo,
+            plan_id=plan["plan_id"])
+        if apply and not preflight.get("ready_for_build"):
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, "Пакет сайта не готов к сборке",
+                "Исправьте blockers из preflight; страница еще не создана", raw=preflight)
+        title = str((seo or {}).get("title") or "").strip()
+        result = await tobiz_build_quality_page(
+            brief=brief, target_project_id=target_project_id, title=title,
+            recipe=recipe, media_recipe=media_recipe, source_terms=source_terms,
+            seo=seo, apply=apply, viewports=viewports, details=details,
+            plan_id=plan["plan_id"])
+        result["package_id"] = package.get("package_id")
+        result["package_validation"] = envelope
+        result["preflight"] = preflight
+        return result
 
     @tool("tobiz_preflight_site_build", "One-call read-only gate for the complete site package before "
           "creating a TOBIZ page. Validates plan_id, copy, factual claims, media assignments, SEO lengths, "
