@@ -433,7 +433,8 @@ class Service:
         await self.client.module_upload(endpoint, project_id, action, upload_entity, id_name, entity_id,
                                         prepared.file_name, prepared.content, prepared.content_type)
         entity = await self.module_get(project_id, kind, entity_id)
-        return {"id": entity_id, "images": entity.get("images", [])}
+        return {"id": entity_id, "images": entity.get("images", []),
+                "uploaded_asset": prepared.metadata()}
 
     async def module_sort_images(self, project_id: str, kind: str, entity_id: str,
                                  image_ids: list[str]) -> dict[str, Any]:
@@ -734,11 +735,16 @@ class Service:
         )
         await self.audit("tobiz_upload_image", project_id, page_id=page_id, block_id=block_id,
                          extra={"filename": prepared.file_name, "bytes": prepared.size})
+        filename = result.get("image")
         return {
-            "filename": result.get("image"),
+            "filename": filename,
             "bytes": prepared.size,
-            "url_original": f"/img/original/{result.get('image')}",
-            "url_325": f"/img/325x0/{result.get('image')}",
+            "width": prepared.width, "height": prepared.height,
+            "aspect_ratio": prepared.aspect_ratio,
+            "content_type": prepared.content_type,
+            "media_asset": prepared.metadata(str(filename or prepared.file_name)),
+            "url_original": f"/img/original/{filename}",
+            "url_325": f"/img/325x0/{filename}",
             "raw": result if result.get("msg") else None,
         }
 
@@ -1350,6 +1356,7 @@ class Service:
                 "unified_pre_copy_build_gate",
                 "one_call_site_package_scaffold",
                 "direct_validated_site_package_build",
+                "verified_image_upload_metadata",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

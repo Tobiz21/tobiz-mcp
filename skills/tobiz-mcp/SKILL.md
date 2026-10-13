@@ -236,6 +236,8 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   После заполнения не распаковывай пакет вручную: передай его целиком в
   `tobiz_build_site_package(apply=false)`, затем при чистом preflight повтори с `apply=true`.
   Команда сама перепроверит версию, бриф, `plan_id` и источник шаблона.
+  Для каждого изображения бери `media_asset` прямо из ответа `tobiz_upload_image`: MCP сам измеряет
+  width, height, формат и aspect ratio по байтам файла. Не вписывай геометрию вручную.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,
   `image_audit`, `reference_comparison`, `design_gate` или вызови `tobiz_check_site_plan`.
   Перед выдачей обязательно проверь `claim_audit`: любая цена, скидка, статистика, длительность,

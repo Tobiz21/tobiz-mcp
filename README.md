@@ -194,7 +194,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_check_site_plan` | проверка готовой страницы против `plan_id`, структуры и ролей с аудитом фото, эталона, редактора и единым дизайн-гейтом |
 | `tobiz_delete_page` | удаление страницы (требует `confirm=true`) |
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
-| `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле |
+| `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле; ответ содержит измеренные width/height, формат, aspect ratio и готовый `media_asset` |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
 | `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article` | штатный редактор статей: тексты, URL, SEO, публикация, категории |
 | `tobiz_upload_article_image`, `tobiz_sort_article_images`, `tobiz_list_article_categories` | изображения, их порядок и категории статей |
@@ -279,6 +279,10 @@ desktop/mobile-аудит, смысловую полноту, опциональ
 добавит `plan_check`, `image_audit`, `claim_audit`, `reference_comparison` и `design_gate`.
 Неподтвержденное фактическое утверждение дает `save_blocked`. Для уже созданной
 страницы используйте `tobiz_check_site_plan` с тем же брифом и идентификатором.
+
+При загрузке каждого PNG, JPEG, GIF или WebP используйте `media_asset` из ответа
+`tobiz_upload_image`: MCP измеряет фактические размеры по содержимому файла. Не вводите width,
+height и aspect ratio вручную. Для SVG без абсолютных размеров значения остаются `null`.
 
 ## Как это устроено (коротко)
 

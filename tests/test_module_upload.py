@@ -60,4 +60,7 @@ def test_module_upload_uses_vendor_entity(
 
     call = instance.client.calls[0]
     assert call[2:6] == (action, entity, id_name, "99")
-    assert result == {"id": "99", "images": [{"id": "1"}]}
+    assert result["id"] == "99" and result["images"] == [{"id": "1"}]
+    assert result["uploaded_asset"] == {
+        "filename": "test.png", "width": 1, "height": 1,
+        "aspect_ratio": 1.0, "content_type": "image/png", "bytes": len(PNG)}

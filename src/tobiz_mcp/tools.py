@@ -1713,7 +1713,8 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     @tool("tobiz_upload_image",
           "Загрузить изображение в конструктор. path — файл внутри /data/inbox, либо "
-          "content_base64. Возвращает имя файла для полей image/image_gallery.")
+          "content_base64. Возвращает имя файла, фактические width/height, формат, aspect_ratio и "
+          "готовый media_asset для медиарецепта.")
     async def tobiz_upload_image(project_id: Id | None = None, page_id: Id = "",
                                  block_id: Id = "", path: str = "",
                                  content_base64: str = "", file_name: str = "") -> dict[str, Any]:
@@ -1750,6 +1751,9 @@ def register(mcp: Any, service: Service) -> list[str]:
             if path_name not in block.changed_paths:
                 block.changed_paths.append(path_name)
         return {"filename": uploaded["filename"], "url_325": uploaded["url_325"],
+                "width": uploaded.get("width"), "height": uploaded.get("height"),
+                "aspect_ratio": uploaded.get("aspect_ratio"),
+                "media_asset": uploaded.get("media_asset"),
                 "field": field, "changed_fields": changed,
                 "change_hash": draft.change_hash()}
 
