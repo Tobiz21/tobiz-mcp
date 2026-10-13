@@ -63,7 +63,7 @@ READ_TOOLS = {
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
-    "tobiz_build_site_package", "tobiz_fill_package_media",
+    "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -955,6 +955,47 @@ def register(mcp: Any, service: Service) -> list[str]:
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.prepare_build_package(brief, plan, blueprint)
+
+    @tool("tobiz_fill_package_content", "Fill exact text and SEO slots in a complete site package "
+          "without editing its structure. Rejects unknown or duplicate block_index/path targets, "
+          "preserves native slot metadata and returns immediate copy, claim, mobile-length and full "
+          "package preflight results. Read-only; use the returned package for the next step.")
+    async def tobiz_fill_package_content(package: dict[str, Any],
+                                         updates: list[dict[str, Any]],
+                                         seo: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте полный пакет из tobiz_prepare_site_package")
+        if not isinstance(updates, list):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "updates должен быть массивом")
+        if not updates and seo is None:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте хотя бы одно текстовое или SEO-изменение")
+        plan = await tobiz_plan_site(package["brief"])
+        envelope = site_plan_domain.validate_package_envelope(package, plan)
+        if envelope["blockers"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "Пакет устарел или относится к другому плану",
+                "Повторно вызовите tobiz_prepare_site_package", raw=envelope)
+        try:
+            filled = site_plan_domain.fill_package_content(package, updates, seo)
+        except ValueError as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        updated = filled["package"]
+        filled["content_validation"] = site_plan_domain.validate_recipe(
+            updated["brief"], plan, blueprint, updated.get("recipe") or {})
+        filled["preflight"] = site_plan_domain.validate_build_package(
+            updated["brief"], plan, blueprint, updated.get("recipe"),
+            updated.get("media_recipe"), updated.get("seo"))
+        filled["package_id"] = package.get("package_id")
+        filled["next_action"] = ("tobiz_fill_package_media" if
+                                 (filled["preflight"].get("media") or {}).get("ready_for_build") is not True
+                                 else "tobiz_build_site_package")
+        return filled
 
     @tool("tobiz_fill_package_media", "Preview or batch-upload local/base64 images into the exact media "
           "slots of a complete site package. Resolves block_index against the locked native template, "

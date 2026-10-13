@@ -545,3 +545,50 @@ def fill_package_media(package: dict[str, Any], uploaded: list[dict[str, Any]]) 
         filled.append({"block_index": key[0], "path_pattern": key[1],
                        "asset_index": index, "filename": metadata["filename"]})
     return {"package": updated, "filled": filled, "filled_count": len(filled)}
+
+
+def fill_package_content(package: dict[str, Any], updates: list[dict[str, Any]],
+                         seo: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fill exact copy and SEO slots without allowing package-structure drift."""
+    updated = json.loads(json.dumps(package, ensure_ascii=False))
+    slots = {
+        (item.get("block_index"), item.get("path")): item
+        for item in (updated.get("recipe") or {}).get("slots") or []
+        if isinstance(item, dict)
+    }
+    filled = []
+    warnings = []
+    targets = set()
+    for position, item in enumerate(updates):
+        if not isinstance(item, dict):
+            raise ValueError(f"Content update {position} must be an object")
+        key = (item.get("block_index"), item.get("path"))
+        if key in targets:
+            raise ValueError(f"Duplicate content slot: {key}")
+        targets.add(key)
+        slot = slots.get(key)
+        if slot is None:
+            raise ValueError(f"Unknown content slot: {key}")
+        value = item.get("value")
+        if not isinstance(value, str):
+            raise ValueError(f"Content value must be a string: {key}")
+        slot["value"] = value.strip()
+        maximum = slot.get("recommended_max_chars")
+        if isinstance(maximum, int) and maximum > 0 and len(slot["value"]) > maximum:
+            warnings.append({"code": "copy_exceeds_mobile_limit", "block_index": key[0],
+                             "path": key[1], "chars": len(slot["value"]),
+                             "recommended_max_chars": maximum})
+        filled.append({"block_index": key[0], "path": key[1], "chars": len(slot["value"])})
+    if seo is not None:
+        if not isinstance(seo, dict):
+            raise ValueError("SEO update must be an object")
+        allowed = {"title", "dir", "seo_title", "seo_description", "og_image"}
+        unknown = sorted(set(seo) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown SEO fields: {', '.join(unknown)}")
+        for key, value in seo.items():
+            if not isinstance(value, str):
+                raise ValueError(f"SEO value must be a string: {key}")
+            updated.setdefault("seo", {})[key] = value.strip()
+    return {"package": updated, "filled": filled, "filled_count": len(filled),
+            "warnings": warnings, "seo_updated": sorted(seo or {})}

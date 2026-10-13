@@ -225,7 +225,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   вызови `tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси только
   `missing_evidence`; не заполняй пробелы выдуманными ценами, отзывами, опытом, гарантиями,
   сроками или контактами. Заполни `recipe`, вызови `tobiz_validate_site_recipe` и устрани
-  `blockers` до копирования страницы. Затем заполни `media_recipe` по точным `photo_requirements`,
+  `blockers` до копирования страницы. Не редактируй большой JSON вручную: передай точные
+  `block_index`, `path`, `value` и SEO в `tobiz_fill_package_content`, затем продолжай только с
+  пакетом из ответа. После этого заполни `media_recipe` по точным `photo_requirements`,
   загружай подготовленные файлы одной командой `tobiz_fill_package_media(package, uploads,
   apply=false)`, проверь сопоставление слотов и повтори с `apply=true`. Продолжай только с пакетом
   из ответа: он содержит измеренные параметры файлов, а штатные блоки еще не изменены. Вызови

@@ -1358,6 +1358,7 @@ class Service:
                 "direct_validated_site_package_build",
                 "verified_image_upload_metadata",
                 "batch_site_package_media_upload",
+                "safe_site_package_content_fill",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

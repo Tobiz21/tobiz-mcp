@@ -30,6 +30,8 @@
   content type and a ready-to-use media-recipe asset instead of relying on agent-supplied geometry.
 - Added previewable batch media upload for complete site packages: native template block indexes are
   resolved safely and byte-verified image metadata is written back without changing block values.
+- Added safe batch filling for exact package copy and SEO slots with duplicate/unknown target rejection,
+  mobile-length warnings, factual validation and an immediate complete-package preflight.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

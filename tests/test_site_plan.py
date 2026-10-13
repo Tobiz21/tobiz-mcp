@@ -239,3 +239,31 @@ def test_fill_package_media_rejects_unknown_slot():
             'block_index': 9, 'path_pattern': '/image', 'asset_index': 0,
             'media_asset': {'filename': 'photo.jpg'},
         }])
+
+
+def test_fill_package_content_preserves_contract_and_warns_on_long_copy():
+    package = {'recipe': {'slots': [{
+        'block_index': 0, 'path': '/title', 'value': '', 'recommended_max_chars': 8,
+        'instruction': 'Короткий заголовок',
+    }]}, 'seo': {'title': '', 'dir': '', 'seo_title': '', 'seo_description': ''}}
+    result = site_plan.fill_package_content(package, [{
+        'block_index': 0, 'path': '/title', 'value': 'Длинный заголовок',
+    }], {'dir': 'kurs-matematiki'})
+    slot = result['package']['recipe']['slots'][0]
+    assert slot['value'] == 'Длинный заголовок'
+    assert slot['instruction'] == 'Короткий заголовок'
+    assert result['package']['seo']['dir'] == 'kurs-matematiki'
+    assert result['warnings'][0]['code'] == 'copy_exceeds_mobile_limit'
+    assert package['recipe']['slots'][0]['value'] == ''
+
+
+def test_fill_package_content_rejects_duplicate_and_unknown_fields():
+    package = {'recipe': {'slots': [{'block_index': 0, 'path': '/title', 'value': ''}]}}
+    duplicate = [
+        {'block_index': 0, 'path': '/title', 'value': 'Один'},
+        {'block_index': 0, 'path': '/title', 'value': 'Два'},
+    ]
+    with pytest.raises(ValueError, match='Duplicate content slot'):
+        site_plan.fill_package_content(package, duplicate)
+    with pytest.raises(ValueError, match='Unknown SEO fields'):
+        site_plan.fill_package_content(package, [], {'keywords': 'математика'})
