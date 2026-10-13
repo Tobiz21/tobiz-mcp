@@ -1359,6 +1359,7 @@ class Service:
                 "verified_image_upload_metadata",
                 "batch_site_package_media_upload",
                 "safe_site_package_content_fill",
+                "resumable_site_package_status",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

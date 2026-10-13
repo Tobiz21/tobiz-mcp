@@ -55,6 +55,7 @@ class FakeService:
             "direct_validated_site_package_build",
             "batch_site_package_media_upload",
             "safe_site_package_content_fill",
+            "resumable_site_package_status",
             "verified_image_upload_metadata",
             "post_build_plan_conformance",
         ]

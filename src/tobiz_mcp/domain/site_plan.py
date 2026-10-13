@@ -476,11 +476,10 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
                 "seo_description": "", "og_image": ""},
         "missing_evidence": (plan.get("content_brief") or {}).get("missing_evidence") or [],
         "workflow": [
-            "Fill only confirmed values from the brief into recipe slots.",
-            "Upload or prepare every media asset and fill its actual filename and dimensions.",
-            "Complete SEO fields without unsupported claims.",
-            "Run tobiz_preflight_site_build and fix blockers.",
-            "Run tobiz_build_quality_page once with the validated package and plan_id.",
+            "Fill confirmed copy and SEO with tobiz_fill_package_content.",
+            "Upload exact media slots with tobiz_fill_package_media.",
+            "Use tobiz_site_package_status whenever work resumes or a blocker remains.",
+            "Build once with tobiz_build_site_package only when ready_for_build is true.",
         ],
     }
 
@@ -592,3 +591,61 @@ def fill_package_content(package: dict[str, Any], updates: list[dict[str, Any]],
             updated.setdefault("seo", {})[key] = value.strip()
     return {"package": updated, "filled": filled, "filled_count": len(filled),
             "warnings": warnings, "seo_updated": sorted(seo or {})}
+
+
+def package_progress(package: dict[str, Any], preflight: dict[str, Any]) -> dict[str, Any]:
+    """Return deterministic completion and the one next package action."""
+    content_slots = [item for item in (package.get("recipe") or {}).get("slots") or []
+                     if isinstance(item, dict)]
+    missing_content = [{key: item.get(key) for key in
+                        ("block_index", "path", "role", "instruction", "recommended_max_chars")
+                        if key in item}
+                       for item in content_slots if not str(item.get("value") or "").strip()]
+    media_assets = []
+    for group in (package.get("media_recipe") or {}).get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        for index, asset in enumerate(group.get("assets") or []):
+            if isinstance(asset, dict):
+                media_assets.append((group, index, asset))
+    missing_media = [{
+        "block_index": group.get("block_index"),
+        "path_pattern": group.get("path_pattern"),
+        "asset_index": index,
+        "path": asset.get("path"),
+        "role": group.get("role"),
+        "brief": group.get("brief"),
+    } for group, index, asset in media_assets
+        if not str(asset.get("filename") or "").strip()]
+    seo = package.get("seo") if isinstance(package.get("seo"), dict) else {}
+    required_seo = ("title", "dir", "seo_title", "seo_description")
+    missing_seo = [field for field in required_seo if not str(seo.get(field) or "").strip()]
+    total = len(content_slots) + len(media_assets) + len(required_seo)
+    missing = len(missing_content) + len(missing_media) + len(missing_seo)
+    completed = max(0, total - missing)
+    blockers = list(preflight.get("blockers") or [])
+    if missing_content or missing_seo:
+        next_action = "tobiz_fill_package_content"
+    elif missing_media:
+        next_action = "tobiz_fill_package_media"
+    elif blockers:
+        next_action = "fix_preflight_blockers"
+    else:
+        next_action = "tobiz_build_site_package"
+    blocker_codes = {}
+    for item in blockers:
+        code = str(item.get("code") or "unknown")
+        blocker_codes[code] = blocker_codes.get(code, 0) + 1
+    return {
+        "ready_for_build": bool(preflight.get("ready_for_build")),
+        "completion_percent": round(completed * 100 / total) if total else 100,
+        "completed_units": completed, "total_units": total,
+        "content": {"filled": len(content_slots) - len(missing_content),
+                    "total": len(content_slots), "missing": missing_content},
+        "media": {"filled": len(media_assets) - len(missing_media),
+                  "total": len(media_assets), "missing": missing_media},
+        "seo": {"filled": len(required_seo) - len(missing_seo),
+                "total": len(required_seo), "missing": missing_seo},
+        "blocker_count": len(blockers), "blocker_codes": blocker_codes,
+        "next_action": next_action,
+    }

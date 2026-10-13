@@ -32,6 +32,8 @@
   resolved safely and byte-verified image metadata is written back without changing block values.
 - Added safe batch filling for exact package copy and SEO slots with duplicate/unknown target rejection,
   mobile-length warnings, factual validation and an immediate complete-package preflight.
+- Added resumable site-package status with exact copy/media/SEO completion, missing slot coordinates,
+  grouped blocker codes and one deterministic next action for any MCP client.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

@@ -64,6 +64,7 @@ READ_TOOLS = {
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
+    "tobiz_site_package_status",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -992,10 +993,33 @@ def register(mcp: Any, service: Service) -> list[str]:
             updated["brief"], plan, blueprint, updated.get("recipe"),
             updated.get("media_recipe"), updated.get("seo"))
         filled["package_id"] = package.get("package_id")
-        filled["next_action"] = ("tobiz_fill_package_media" if
-                                 (filled["preflight"].get("media") or {}).get("ready_for_build") is not True
-                                 else "tobiz_build_site_package")
+        filled["progress"] = site_plan_domain.package_progress(updated, filled["preflight"])
+        filled["next_action"] = filled["progress"]["next_action"]
         return filled
+
+    @tool("tobiz_site_package_status", "Resume a prepared site package safely. Revalidates its plan and "
+          "locked template, counts completed copy, media and required SEO slots, lists every exact missing "
+          "target, groups preflight blockers and returns one deterministic next_action. Read-only.")
+    async def tobiz_site_package_status(package: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте полный пакет из tobiz_prepare_site_package")
+        plan = await tobiz_plan_site(package["brief"])
+        envelope = site_plan_domain.validate_package_envelope(package, plan)
+        if envelope["blockers"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "Пакет устарел или относится к другому плану",
+                "Повторно вызовите tobiz_prepare_site_package", raw=envelope)
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        preflight = site_plan_domain.validate_build_package(
+            package["brief"], plan, blueprint, package.get("recipe"),
+            package.get("media_recipe"), package.get("seo"))
+        return {"package_id": package.get("package_id"), "plan_id": plan.get("plan_id"),
+                "template": selected, "progress": site_plan_domain.package_progress(package, preflight),
+                "preflight": preflight}
 
     @tool("tobiz_fill_package_media", "Preview or batch-upload local/base64 images into the exact media "
           "slots of a complete site package. Resolves block_index against the locked native template, "

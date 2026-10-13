@@ -267,3 +267,36 @@ def test_fill_package_content_rejects_duplicate_and_unknown_fields():
         site_plan.fill_package_content(package, duplicate)
     with pytest.raises(ValueError, match='Unknown SEO fields'):
         site_plan.fill_package_content(package, [], {'keywords': 'математика'})
+
+
+def test_package_progress_returns_exact_resume_action_and_missing_targets():
+    package = {
+        'recipe': {'slots': [
+            {'block_index': 0, 'path': '/title', 'role': 'title', 'value': 'Курс'},
+            {'block_index': 1, 'path': '/text', 'role': 'body', 'value': ''},
+        ]},
+        'media_recipe': {'groups': [{
+            'block_index': 0, 'path_pattern': '/image', 'role': 'image',
+            'assets': [{'path': '/image', 'filename': ''}],
+        }]},
+        'seo': {'title': 'Курс математики', 'dir': '', 'seo_title': '', 'seo_description': ''},
+    }
+    result = site_plan.package_progress(package, {'ready_for_build': False, 'blockers': [
+        {'code': 'recipe_slot_missing'}, {'code': 'recipe_slot_missing'},
+    ]})
+    assert result['completion_percent'] == 29
+    assert result['content']['missing'][0]['path'] == '/text'
+    assert result['media']['missing'][0]['asset_index'] == 0
+    assert result['seo']['missing'] == ['dir', 'seo_title', 'seo_description']
+    assert result['blocker_codes'] == {'recipe_slot_missing': 2}
+    assert result['next_action'] == 'tobiz_fill_package_content'
+
+
+def test_package_progress_moves_to_build_when_complete():
+    package = {'recipe': {'slots': [{'block_index': 0, 'path': '/title', 'value': 'Курс'}]},
+               'media_recipe': {'groups': []},
+               'seo': {'title': 'Заголовок', 'dir': 'kurs', 'seo_title': 'SEO',
+                       'seo_description': 'Описание'}}
+    result = site_plan.package_progress(package, {'ready_for_build': True, 'blockers': []})
+    assert result['completion_percent'] == 100
+    assert result['next_action'] == 'tobiz_build_site_package'

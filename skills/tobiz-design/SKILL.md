@@ -31,6 +31,8 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 пока единый вердикт `ready_for_build` не станет `true`.
 Заполненный пакет передавай целиком в `tobiz_build_site_package`; не переноси его поля между
 командами вручную.
+Если работа прервалась или непонятен следующий шаг, вызови `tobiz_site_package_status` и продолжай
+по его `next_action` и точным спискам `missing`; не анализируй весь шаблон заново.
 Размеры и пропорции фото бери только из `media_asset`, возвращенного `tobiz_upload_image`, а не из
 предположения по имени файла или внешнему описанию.
 Перед выдачей запусти `tobiz_audit_claims` или проверь одноименный результат конвейера. Фактические
