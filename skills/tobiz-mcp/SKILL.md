@@ -224,6 +224,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   сроками или контактами. Передай `plan_id` в `tobiz_build_quality_page`.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,
   `image_audit`, `reference_comparison`, `design_gate` или вызови `tobiz_check_site_plan`.
+  Перед выдачей обязательно проверь `claim_audit`: любая цена, скидка, статистика, длительность,
+  стаж, телефон или email, которых нет в подтвержденном брифе, блокируют результат. Для отдельной
+  проверки используй `tobiz_audit_claims`.
 
 * **Безопасно улучшить существующую страницу**: сначала `tobiz_improve_page(apply=false)`, затем
   проверь `safe_changes` и повтори с `apply=true`. Инструмент меняет только известные штатные

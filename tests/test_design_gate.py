@@ -19,7 +19,16 @@ def test_ready_requires_all_quality_layers_to_pass():
     assert result["release_ready"] is True
     assert result["checks"] == {"public_desktop_mobile": True, "composition": True,
                                 "reference": True, "editor_roundtrip": True,
-                                "draft_saved": True}
+                                "draft_saved": True, "claim_integrity": None}
+
+
+def test_unsupported_claim_blocks_release():
+    claims = {"ready": False, "issues": [
+        {"priority": "must_fix", "code": "unsupported_price_claim"}]}
+    result = evaluate(audit(), composition(), roundtrip={"editor_safe": True}, claims=claims)
+    assert result["verdict"] == "save_blocked"
+    assert result["checks"]["claim_integrity"] is False
+    assert result["blockers"][0]["source"] == "claim_integrity"
 
 
 def test_critical_or_unsaved_draft_blocks_release_and_caps_score():

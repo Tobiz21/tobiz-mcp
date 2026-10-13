@@ -12,7 +12,8 @@ def _issues(items: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
 def evaluate(audit: dict[str, Any], composition: dict[str, Any],
              reference: dict[str, Any] | None = None,
              roundtrip: dict[str, Any] | None = None,
-             *, has_unsaved_changes: bool = False) -> dict[str, Any]:
+             *, has_unsaved_changes: bool = False,
+             claims: dict[str, Any] | None = None) -> dict[str, Any]:
     reference = reference or {}
     audit_score = float((audit.get("quality_score") or {}).get("overall", 0))
     composition_score = float(composition.get("score", 0))
@@ -41,6 +42,8 @@ def evaluate(audit: dict[str, Any], composition: dict[str, Any],
     for item in reference.get("issues") or []:
         target = blockers if item.get("priority") == "must_fix" else improvements
         target.extend(_issues([item], "design_reference"))
+    if claims is not None:
+        blockers.extend(_issues(claims.get("issues") or [], "claim_integrity"))
     if roundtrip is not None and not roundtrip.get("editor_safe"):
         blockers.append({
             "source": "editor_roundtrip", "code": "editor_roundtrip_unsafe",
@@ -70,6 +73,7 @@ def evaluate(audit: dict[str, Any], composition: dict[str, Any],
             "reference": None if not reference else reference.get("meets_7_of_10", False),
             "editor_roundtrip": None if roundtrip is None else bool(roundtrip.get("editor_safe")),
             "draft_saved": not has_unsaved_changes,
+            "claim_integrity": None if claims is None else bool(claims.get("ready")),
         },
         "rule": "Выдавать сайт можно только при verdict=ready; исправления выполняются штатными блоками TOBIZ.",
     }

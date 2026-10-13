@@ -47,6 +47,7 @@ class FakeService:
             "rendered_image_composition_audit",
             "deterministic_native_site_planning",
             "evidence_bound_content_compiler",
+            "brief_bound_claim_integrity_audit",
             "post_build_plan_conformance",
         ]
         if self.missing_feature:

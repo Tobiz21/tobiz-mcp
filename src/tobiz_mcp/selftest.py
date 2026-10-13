@@ -122,6 +122,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "rendered_image_composition_audit",
         "deterministic_native_site_planning",
         "evidence_bound_content_compiler",
+        "brief_bound_claim_integrity_audit",
         "post_build_plan_conformance",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

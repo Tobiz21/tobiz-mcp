@@ -11,6 +11,7 @@ from typing import Annotated, Any, Callable
 
 from . import errors, log
 from .domain import blocks as block_domain
+from .domain import claim_audit as claim_audit_domain
 from .domain import content as content_domain
 from .domain import composition as composition_domain
 from .domain import design_gate as design_gate_domain
@@ -60,7 +61,7 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
-    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_check_site_plan",
+    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
 
@@ -912,6 +913,16 @@ def register(mcp: Any, service: Service) -> list[str]:
             "photo_requirements": plan["photo_requirements"],
         }
 
+    @tool("tobiz_audit_claims", "Read-only factual integrity audit for a TOBIZ page. Finds phones, emails, "
+          "prices, discounts, experience, durations and numeric results that are not present in the approved "
+          "brief. Returns the exact block and native field; never edits copy or invents replacements.")
+    async def tobiz_audit_claims(brief: dict[str, Any], project_id: Id | None = None,
+                                 page_id: Id = "") -> dict[str, Any]:
+        if not isinstance(brief, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        return claim_audit_domain.analyze(await service.draft(project_id, page_id), brief)
+
     @tool("tobiz_check_site_plan", "Compare an existing TOBIZ page with a deterministic plan_id "
           "reconstructed from the same brief. Checks native structure and section roles, then runs "
           "image composition, reference fidelity, editor safety and the unified release gate. Read-only.")
@@ -944,9 +955,10 @@ def register(mcp: Any, service: Service) -> list[str]:
                 source_draft, audit_domain.compact(reference_report), plan["goal"]),
             design_reference_domain.extract(target_draft, target_audit, plan["goal"]))
         roundtrip = await service.editor_roundtrip(project_id, page_id)
+        claims = claim_audit_domain.analyze(target_draft, brief)
         gate = design_gate_domain.evaluate(
             target_audit, target_composition, reference, roundtrip,
-            has_unsaved_changes=target_draft.has_changes)
+            has_unsaved_changes=target_draft.has_changes, claims=claims)
         if not plan_check["matches"]:
             gate["blockers"] = plan_check["issues"] + gate["blockers"]
             gate["verdict"] = "save_blocked"
@@ -954,7 +966,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             gate["score"] = min(float(gate["score"]), 4.9)
         return {"plan": plan, "plan_check": plan_check,
                 "images": image_audit_domain.summarize(target_report),
-                "reference_comparison": reference, "gate": gate}
+                "claims": claims, "reference_comparison": reference, "gate": gate}
 
     @tool("tobiz_build_quality_page", "Brief-driven native TOBIZ quality pipeline. Selects a verified "
           "installed template, enforces the 30% Flex limit, returns a photo-slot manifest in preview, "
@@ -1041,7 +1053,8 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["quality_gates"] = [
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
             "complete_recipe_before_copy", "desktop_mobile_audit", "editor_roundtrip_safe",
-            "content_integrity_review", "visual_consistency_review",
+            "content_integrity_review", "brief_bound_claim_integrity",
+            "visual_consistency_review",
         ]
         if apply:
             page = result.get("page") or {}
@@ -1066,9 +1079,11 @@ def register(mcp: Any, service: Service) -> list[str]:
                     source_draft, audit_domain.compact(reference_report), site_plan["goal"]),
                 design_reference_domain.extract(
                     target_draft, target_audit, site_plan["goal"]))
+            claims = claim_audit_domain.analyze(target_draft, brief)
             gate = design_gate_domain.evaluate(
                 target_audit, target_composition, reference, roundtrip,
-                has_unsaved_changes=target_draft.has_changes)
+                has_unsaved_changes=target_draft.has_changes,
+                claims=claims)
             if not plan_check["matches"]:
                 gate["blockers"] = plan_check["issues"] + gate["blockers"]
                 gate["verdict"] = "save_blocked"
@@ -1077,6 +1092,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             result["plan_check"] = plan_check
             result["image_audit"] = image_audit_domain.summarize(target_report)
             result["reference_comparison"] = reference
+            result["claim_audit"] = claims
             result["design_gate"] = gate
             result["quality_verdict"] = gate["verdict"]
         else:
