@@ -17,6 +17,88 @@ PHOTO_RULES = {
     "content_image": {"orientation": "match native slot", "ratio": "preserve source proportions", "safe_zone": "keep the subject inside the visible crop"},
 }
 
+EVIDENCE_REQUIREMENTS = {
+    "lead_generation": (
+        ("offer", ("offer", "service", "services"), "Что именно получает клиент"),
+        ("geography", ("geography", "city", "region"), "Где оказывается услуга"),
+        ("process", ("process", "steps"), "Как проходит работа"),
+        ("expertise", ("experience", "expertise", "company"), "Кто выполняет работу и на чем основана компетенция"),
+        ("contact", ("phone", "email", "address", "contacts"), "Как связаться"),
+    ),
+    "education": (
+        ("program", ("program", "programs", "curriculum"), "Что входит в обучение"),
+        ("format", ("format", "formats", "schedule"), "Формат и организация занятий"),
+        ("expert", ("teacher", "expert", "experience"), "Кто преподает и его подтвержденный опыт"),
+        ("result", ("result", "outcomes", "method"), "Какой проверяемый результат ожидается"),
+        ("contact", ("phone", "email", "contacts"), "Как записаться"),
+    ),
+    "ecommerce": (
+        ("catalog", ("products", "catalog", "assortment"), "Какие товары продаются"),
+        ("price", ("price", "prices", "pricing"), "Реальные цены или правило их расчета"),
+        ("delivery", ("delivery", "pickup", "shipping"), "Условия доставки и получения"),
+        ("payment", ("payment", "payments"), "Способы оплаты"),
+        ("contact", ("phone", "email", "contacts"), "Как задать вопрос"),
+    ),
+}
+
+SLOT_INSTRUCTIONS = {
+    "section_title": "Коротко назвать смысл секции, без рекламной абстракции.",
+    "card_title": "Одна конкретная мысль; соседние карточки должны иметь сопоставимую длину.",
+    "subtitle": "Раскрыть заголовок одним проверяемым обещанием или пояснением.",
+    "body": "Использовать только факты из брифа; добавить детали процесса, состава или условий.",
+    "button": "Назвать следующее действие пользователя, а не использовать нейтральное «Подробнее» без причины.",
+    "link": "Использовать штатный якорь, форму, карточку товара или подтвержденный внешний адрес.",
+    "text": "Сохранить функцию исходного поля и не превышать длину соседних элементов.",
+}
+
+
+def _has_fact(brief: dict[str, Any], aliases: tuple[str, ...]) -> bool:
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+    for key in aliases:
+        value = brief.get(key, facts.get(key))
+        if isinstance(value, (list, tuple, set, dict)) and value:
+            return True
+        if value is not None and str(value).strip():
+            return True
+    return False
+
+
+def compile_content_brief(brief: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+    """Turn a site plan into evidence-bound instructions for every native text slot."""
+    goal = str(plan.get("goal") or infer_goal(brief))
+    missing = [
+        {"code": code, "label": label, "accepted_fields": list(aliases)}
+        for code, aliases, label in EVIDENCE_REQUIREMENTS[goal]
+        if not _has_fact(brief, aliases)
+    ]
+    slots = []
+    for section in plan.get("sections") or []:
+        for slot in section.get("text_slots") or []:
+            role = str(slot.get("role") or "text")
+            slots.append({
+                "block_index": section.get("position"),
+                "section_role": section.get("role"),
+                "path": slot.get("path"),
+                "field_role": role,
+                "max_chars": slot.get("max_chars"),
+                "instruction": SLOT_INSTRUCTIONS.get(role, SLOT_INSTRUCTIONS["text"]),
+                "evidence_policy": "Use only supplied facts; mark unknown data as required instead of inventing it.",
+            })
+    return {
+        "plan_id": plan.get("plan_id"), "goal": goal,
+        "ready_for_copywriting": not missing, "missing_evidence": missing, "slots": slots,
+        "prohibited_inventions": [
+            "prices and discounts", "statistics and quantities", "experience and credentials",
+            "customer names and testimonials", "guarantees and deadlines", "addresses and contacts",
+        ],
+        "rules": [
+            "Preserve the native slot and section structure.",
+            "Keep neighboring card titles and descriptions visually balanced.",
+            "Use a concrete contextual CTA and the native TOBIZ action.",
+            "Leave an explicit content gap when evidence is missing; never fill it with a fabricated claim.",
+        ],
+    }
+
 
 def infer_goal(brief: dict[str, Any]) -> str:
     text = " ".join(str(value) for value in brief.values()).lower().replace("ё", "е")
@@ -59,7 +141,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
     }
     plan_id = hashlib.sha256(json.dumps(
         identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:20]
-    return {
+    plan = {
         "plan_id": plan_id, "goal": goal, "brief": brief,
         "template": selected, "alternatives": selection.get("alternatives", [])[:2],
         "visual_references": selection.get("visual_references", []),
@@ -80,6 +162,8 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
         ],
         "rule": "Copy the installed native structure; replace content and media; add no custom code.",
     }
+    plan["content_brief"] = compile_content_brief(brief, plan)
+    return plan
 
 
 def compare(plan: dict[str, Any], target_draft, target_composition: dict[str, Any]) -> dict[str, Any]:

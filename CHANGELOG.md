@@ -12,6 +12,8 @@
   MCP Registry times out, while still failing on an incorrect Registry record.
 - Added deterministic native site planning with stable plan IDs, section purposes, copy limits,
   photo briefs and post-build conformance checks integrated into the quality-page pipeline.
+- Added an evidence-bound content compiler that maps client facts to native template slots, reports
+  missing proof before copywriting and prevents fabricated prices, reviews, credentials and guarantees.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

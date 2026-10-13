@@ -218,7 +218,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 
 * **Спланировать новый сайт до сборки**: начни с `tobiz_plan_site(brief=...)`. Зафиксируй
   возвращенный `plan_id`, не меняй выбранную структуру и подготовь тексты и фотографии по
-  `sections`, `recipe` и `photo_requirements`. Передай `plan_id` в `tobiz_build_quality_page`.
+  `sections`, `recipe` и `photo_requirements`. Перед написанием текста проверь `content_brief` или
+  вызови `tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси только
+  `missing_evidence`; не заполняй пробелы выдуманными ценами, отзывами, опытом, гарантиями,
+  сроками или контактами. Передай `plan_id` в `tobiz_build_quality_page`.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,
   `image_audit`, `reference_comparison`, `design_gate` или вызови `tobiz_check_site_plan`.
 

@@ -60,7 +60,7 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
-    "tobiz_plan_site", "tobiz_check_site_plan",
+    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_check_site_plan",
 }
 
 
@@ -899,6 +899,18 @@ def register(mcp: Any, service: Service) -> list[str]:
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.build(
             brief, selection, selected, blueprint, source_draft, goal or None)
+
+    @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "
+          "TOBIZ site before writing text. Selects and locks the same installed template as tobiz_plan_site, "
+          "maps every native text slot to its purpose and mobile length limit, lists missing client evidence, "
+          "and forbids fabricated prices, reviews, credentials, guarantees and contacts. Read-only.")
+    async def tobiz_compile_site_content(brief: dict[str, Any], goal: str = "") -> dict[str, Any]:
+        plan = await tobiz_plan_site(brief, goal)
+        return {
+            "plan_id": plan["plan_id"], "template": plan["template"],
+            "content_brief": plan["content_brief"],
+            "photo_requirements": plan["photo_requirements"],
+        }
 
     @tool("tobiz_check_site_plan", "Compare an existing TOBIZ page with a deterministic plan_id "
           "reconstructed from the same brief. Checks native structure and section roles, then runs "

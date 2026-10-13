@@ -10,6 +10,11 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 
 ## Перед сборкой
 
+Сначала вызови `tobiz_plan_site`, затем проверь вложенный `content_brief` или вызови
+`tobiz_compile_site_content`. Если `ready_for_copywriting=false`, запроси `missing_evidence` и не
+заменяй отсутствующие факты выдуманными ценами, отзывами, опытом, гарантиями или контактами.
+Сборку запускай только с возвращенным `plan_id`.
+
 1. Определи аудиторию, главное действие, уровень цены и характер доверия: рациональное,
    эмоциональное, экспертное или предметное.
 2. Вызови `tobiz_select_design` с брифом. Используй `recommended.source project_id/page_id` как

@@ -21,6 +21,23 @@ def test_plan_is_deterministic_and_uses_native_slots():
     assert first['goal'] == 'education'
     assert first['structure_locked'] is True
     assert first['photo_requirements'][0]['orientation'] == 'wide'
+    assert first['content_brief']['plan_id'] == first['plan_id']
+    assert first['content_brief']['ready_for_copywriting'] is False
+    assert first['content_brief']['slots'][0]['field_role'] == 'section_title'
+
+
+def test_content_compiler_requires_evidence_and_accepts_nested_facts():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'facts': {
+        'program': ['Задачи и арифметика'], 'format': 'Онлайн', 'teacher': 'Ирина, преподаватель',
+        'result': 'Самостоятельно решает задачи', 'phone': '+7 900 000-00-00'}}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    manifest = site_plan.compile_content_brief(brief, plan)
+    assert manifest['ready_for_copywriting'] is True
+    assert manifest['missing_evidence'] == []
+    assert 'prices and discounts' in manifest['prohibited_inventions']
 
 
 def test_plan_comparison_detects_structure_and_role_drift():
