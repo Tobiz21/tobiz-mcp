@@ -125,6 +125,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "brief_bound_claim_integrity_audit",
         "pre_copy_recipe_validation",
         "pre_copy_media_validation",
+        "unified_pre_copy_build_gate",
         "post_build_plan_conformance",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

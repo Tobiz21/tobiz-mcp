@@ -62,7 +62,7 @@ READ_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
-    "tobiz_validate_media_recipe",
+    "tobiz_validate_media_recipe", "tobiz_preflight_site_build",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -943,6 +943,26 @@ def register(mcp: Any, service: Service) -> list[str]:
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.validate_media_recipe(plan, blueprint, media_recipe)
 
+    @tool("tobiz_preflight_site_build", "One-call read-only gate for the complete site package before "
+          "creating a TOBIZ page. Validates plan_id, copy, factual claims, media assignments, SEO lengths, "
+          "page slug and unsafe or empty links. Returns one ready_for_build verdict and exact blockers.")
+    async def tobiz_preflight_site_build(brief: dict[str, Any], recipe: dict[str, Any],
+                                         media_recipe: dict[str, Any] | None = None,
+                                         seo: dict[str, Any] | None = None,
+                                         plan_id: str = "", goal: str = "") -> dict[str, Any]:
+        if not isinstance(recipe, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "recipe must be an object")
+        plan = await tobiz_plan_site(brief, goal)
+        if plan_id and plan_id != plan["plan_id"]:
+            raise errors.TobizError(errors.CONFLICT, "plan_id не соответствует текущему брифу",
+                                    "Повторно вызовите tobiz_plan_site")
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        blueprint = content_domain.compact_blueprint(
+            content_domain.passport(source_draft), content_domain.content_map(source_draft))
+        return site_plan_domain.validate_build_package(
+            brief, plan, blueprint, recipe, media_recipe, seo)
+
     @tool("tobiz_audit_claims", "Read-only factual integrity audit for a TOBIZ page. Finds phones, emails, "
           "prices, discounts, experience, durations and numeric results that are not present in the approved "
           "brief. Returns the exact block and native field; never edits copy or invents replacements.")
@@ -1034,6 +1054,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             brief, site_plan, blueprint, recipe) if recipe else None)
         media_validation = (site_plan_domain.validate_media_recipe(
             site_plan, blueprint, media_recipe) if media_recipe else None)
+        preflight = site_plan_domain.validate_build_package(
+            brief, site_plan, blueprint, recipe, media_recipe, seo)
         if apply and not recipe:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT,
@@ -1053,6 +1075,13 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "Контентный рецепт не прошел предварительную проверку",
                 "Исправьте blockers из tobiz_validate_site_recipe; страница еще не создана",
                 raw=recipe_validation,
+            )
+        if apply and preflight.get("blockers"):
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Пакет сайта не прошел единую предсборочную проверку",
+                "Исправьте blockers из tobiz_preflight_site_build; страница еще не создана",
+                raw=preflight,
             )
         has_photo_slots = bool(blueprint.get("photo_slots"))
         allow_placeholders = brief.get("allow_placeholders") is True
@@ -1100,6 +1129,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["site_plan"] = site_plan
         result["recipe_validation"] = recipe_validation
         result["media_validation"] = media_validation
+        result["preflight"] = preflight
         result["recipe_coverage"] = coverage if recipe else {
             key: value for key, value in coverage.items()
             if key not in {"missing", "unchanged"}
@@ -1115,7 +1145,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             "native_blocks_only", "flex_share_lte_30_percent", "single_save",
             "complete_recipe_before_copy", "desktop_mobile_audit", "editor_roundtrip_safe",
             "content_integrity_review", "brief_bound_claim_integrity",
-            "pre_copy_media_validation", "visual_consistency_review",
+            "pre_copy_media_validation", "unified_pre_copy_build_gate",
+            "visual_consistency_review",
         ]
         if apply:
             page = result.get("page") or {}

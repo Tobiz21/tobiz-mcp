@@ -1347,6 +1347,7 @@ class Service:
                 "brief_bound_claim_integrity_audit",
                 "pre_copy_recipe_validation",
                 "pre_copy_media_validation",
+                "unified_pre_copy_build_gate",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

@@ -411,6 +411,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'brief_bound_claim_integrity_audit' in result['features']
     assert 'pre_copy_recipe_validation' in result['features']
     assert 'pre_copy_media_validation' in result['features']
+    assert 'unified_pre_copy_build_gate' in result['features']
     assert 'post_build_plan_conformance' in result['features']
 
 

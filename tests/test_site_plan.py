@@ -127,3 +127,49 @@ def test_media_preflight_blocks_placeholders_bad_ratio_and_missing_safe_area():
     assert {'media_placeholder_used', 'media_resolution_too_low', 'background_not_wide',
             'background_safe_area_unconfirmed'} <= codes
     assert result['ready_for_build'] is False
+
+
+def test_unified_preflight_accepts_complete_quality_package():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    media = {'groups': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
+            'filename': 'hero.webp', 'width': 1920, 'height': 1080,
+            'subject': 'Урок математики', 'safe_text_area': True,
+        }],
+    }]}
+    seo = {
+        'title': 'Онлайн-курс математики для школьников',
+        'dir': 'kurs-matematiki',
+        'seo_title': 'Онлайн-курс математики для школьников',
+        'seo_description': ('Курс математики для школьников с понятной программой, практическими '
+                            'занятиями и последовательной подготовкой к самостоятельному решению задач.'),
+    }
+    result = site_plan.validate_build_package(brief, plan, blueprint, recipe, media, seo)
+    assert result['ready_for_build'] is True
+    assert result['mode'] == 'quality'
+    assert result['next_action'] == 'build'
+
+
+def test_unified_preflight_blocks_missing_seo_and_unsafe_link():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс математики'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться'},
+        {'block_index': 1, 'path': '/link', 'value': 'javascript:alert(1)'},
+    ]}
+    result = site_plan.validate_build_package(brief, plan, blueprint, recipe, None, None)
+    codes = {item['code'] for item in result['blockers']}
+    assert {'media_recipe_missing', 'seo_package_missing', 'unsafe_recipe_link'} <= codes
+    assert result['ready_for_build'] is False

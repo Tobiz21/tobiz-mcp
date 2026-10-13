@@ -20,6 +20,8 @@
   card balance, contextual CTAs and brief-bound factual claims.
 - Added pre-copy media-recipe validation for exact native image coverage, resolution, orientation,
   background text-safe areas, consistent card ratios, placeholders and cross-section reuse.
+- Added a unified pre-copy build gate for plan identity, copy, factual claims, media, SEO, page slug
+  and unsafe links, and wired the same verdict into the quality-page builder.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

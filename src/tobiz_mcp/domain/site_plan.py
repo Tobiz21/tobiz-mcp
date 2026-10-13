@@ -351,3 +351,74 @@ def merge_media_recipe(recipe: dict[str, Any], validation: dict[str, Any]) -> di
     merged = {**recipe, "slots": list(recipe.get("slots") or [])}
     merged["slots"].extend(validation.get("assignments") or [])
     return merged
+
+
+def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
+                           blueprint: dict[str, Any], recipe: dict[str, Any] | None,
+                           media_recipe: dict[str, Any] | None,
+                           seo: dict[str, Any] | None) -> dict[str, Any]:
+    """Run every deterministic pre-copy gate in one call."""
+    draft_mode = brief.get("allow_placeholders") is True
+    content_result = validate_recipe(brief, plan, blueprint, recipe or {})
+    media_result = (validate_media_recipe(plan, blueprint, media_recipe)
+                    if media_recipe else None)
+    issues = list(content_result.get("issues") or [])
+    if blueprint.get("photo_slots") and media_result is None:
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix",
+            "code": "media_recipe_missing",
+            "action": "Заполнить и проверить media_recipe по photo_requirements.",
+        })
+    elif media_result:
+        issues.extend(media_result.get("issues") or [])
+
+    seo_values = seo if isinstance(seo, dict) else {}
+    seo_checks = {
+        "title": (30, 70), "seo_title": (30, 70), "seo_description": (100, 180),
+    }
+    if not seo_values:
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix", "code": "seo_package_missing",
+            "action": "Передать title, dir, seo_title и seo_description до сборки.",
+        })
+    else:
+        for field in ("title", "dir", "seo_title", "seo_description"):
+            if not str(seo_values.get(field) or "").strip():
+                issues.append({"priority": "must_fix", "code": "seo_required_field_missing",
+                               "field": field, "action": f"Заполнить SEO-поле {field}."})
+        slug = str(seo_values.get("dir") or "")
+        if slug and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+            issues.append({"priority": "must_fix", "code": "invalid_page_slug", "value": slug,
+                           "action": "Использовать короткий URL из латиницы, цифр и дефисов без слешей."})
+        for field, (minimum, maximum) in seo_checks.items():
+            value = str(seo_values.get(field) or "").strip()
+            if value and not minimum <= len(value) <= maximum:
+                issues.append({"priority": "improve", "code": "seo_length_outside_guidance",
+                               "field": field, "chars": len(value), "recommended": [minimum, maximum],
+                               "action": "Скорректировать длину без повторов и переспама."})
+        seo_claims = claim_audit.analyze_recipe({"slots": [
+            {"block_index": "seo", "path": f"/{key}", "value": value}
+            for key, value in seo_values.items() if isinstance(value, str)
+        ]}, brief)
+        issues.extend(seo_claims.get("issues") or [])
+
+    for slot in (recipe or {}).get("slots") or []:
+        if not isinstance(slot, dict) or not isinstance(slot.get("value"), str):
+            continue
+        value = slot["value"].strip()
+        if re.match(r"(?i)^javascript:", value):
+            issues.append({"priority": "must_fix", "code": "unsafe_recipe_link",
+                           "block_index": slot.get("block_index"), "path": slot.get("path"),
+                           "action": "Использовать штатный якорь, форму или безопасный URL."})
+        if value == "#":
+            issues.append({"priority": "must_fix", "code": "empty_recipe_anchor",
+                           "block_index": slot.get("block_index"), "path": slot.get("path"),
+                           "action": "Привязать ссылку к существующей секции или форме."})
+
+    blockers = [item for item in issues if item.get("priority") == "must_fix"]
+    return {
+        "plan_id": plan.get("plan_id"), "mode": "prototype" if draft_mode else "quality",
+        "ready_for_build": not blockers, "content": content_result, "media": media_result,
+        "seo": {"provided": bool(seo_values)}, "issues": issues, "blockers": blockers,
+        "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
+    }
