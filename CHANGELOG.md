@@ -34,6 +34,8 @@
   mobile-length warnings, factual validation and an immediate complete-package preflight.
 - Added resumable site-package status with exact copy/media/SEO completion, missing slot coordinates,
   grouped blocker codes and one deterministic next action for any MCP client.
+- Added atomic local site-package checkpoints with list/load tools and live plan/template revalidation,
+  allowing work to continue safely after MCP reconnects or across different AI clients.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

@@ -65,6 +65,7 @@ READ_TOOLS = {
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_site_package_status",
+    "tobiz_save_site_package", "tobiz_list_site_packages", "tobiz_load_site_package",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -1020,6 +1021,31 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"package_id": package.get("package_id"), "plan_id": plan.get("plan_id"),
                 "template": selected, "progress": site_plan_domain.package_progress(package, preflight),
                 "preflight": preflight}
+
+    @tool("tobiz_save_site_package", "Save or update a validated site-package checkpoint in local MCP "
+          "storage so work can resume after reconnecting or in another AI client. Atomic local write only; "
+          "does not edit TOBIZ. Returns checkpoint_id and current progress.")
+    async def tobiz_save_site_package(package: dict[str, Any]) -> dict[str, Any]:
+        status = await tobiz_site_package_status(package)
+        checkpoint = service.save_site_package(package)
+        return {**checkpoint, "progress": status["progress"]}
+
+    @tool("tobiz_list_site_packages", "List locally saved site-package checkpoints without exposing "
+          "credentials or full client content. Returns checkpoint IDs, timestamps, plan IDs and topics. "
+          "Read-only for TOBIZ.")
+    async def tobiz_list_site_packages() -> dict[str, Any]:
+        return service.list_site_packages()
+
+    @tool("tobiz_load_site_package", "Load a local site-package checkpoint and revalidate its plan and "
+          "template against current TOBIZ state. Returns the complete package, current progress and exact "
+          "next action. Read-only for TOBIZ.")
+    async def tobiz_load_site_package(checkpoint_id: str) -> dict[str, Any]:
+        checkpoint = service.load_site_package(checkpoint_id)
+        status = await tobiz_site_package_status(checkpoint["package"])
+        return {key: checkpoint.get(key) for key in
+                ("checkpoint_id", "saved_at", "package_id", "plan_id")} | {
+                    "package": checkpoint["package"], "progress": status["progress"],
+                    "preflight": status["preflight"]}
 
     @tool("tobiz_fill_package_media", "Preview or batch-upload local/base64 images into the exact media "
           "slots of a complete site package. Resolves block_index against the locked native template, "

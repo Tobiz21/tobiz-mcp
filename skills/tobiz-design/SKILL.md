@@ -33,6 +33,8 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 командами вручную.
 Если работа прервалась или непонятен следующий шаг, вызови `tobiz_site_package_status` и продолжай
 по его `next_action` и точным спискам `missing`; не анализируй весь шаблон заново.
+Сохраняй пакет через `tobiz_save_site_package` после текстов и после медиа. В новой сессии используй
+`tobiz_list_site_packages` и `tobiz_load_site_package`, затем заново оцени только указанные блокеры.
 Размеры и пропорции фото бери только из `media_asset`, возвращенного `tobiz_upload_image`, а не из
 предположения по имени файла или внешнему описанию.
 Перед выдачей запусти `tobiz_audit_claims` или проверь одноименный результат конвейера. Фактические

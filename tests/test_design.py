@@ -83,6 +83,7 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_prepare_site_package',
             'tobiz_fill_package_content',
             'tobiz_site_package_status',
+            'tobiz_save_site_package', 'tobiz_list_site_packages', 'tobiz_load_site_package',
             'tobiz_fill_package_media',
             'tobiz_preflight_site_build',
             'tobiz_build_site_package',

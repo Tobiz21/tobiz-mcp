@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -293,6 +294,62 @@ class Service:
             except (OSError, ValueError, KeyError):
                 continue
         return {"project_id": str(project_id), "page_id": str(page_id), "backups": items}
+
+    def _site_package_dir(self) -> Path:
+        return self.config.audit_dir / "site-packages"
+
+    def save_site_package(self, package: dict[str, Any]) -> dict[str, Any]:
+        package_id = str(package.get("package_id") or "").strip()
+        if not package_id:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "В пакете отсутствует package_id")
+        checkpoint_id = hashlib.sha256(package_id.encode("utf-8")).hexdigest()[:24]
+        target = self._site_package_dir()
+        target.mkdir(parents=True, exist_ok=True)
+        path = target / f"{checkpoint_id}.json"
+        body = {
+            "schema_version": 1, "checkpoint_id": checkpoint_id,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "package_id": package_id, "plan_id": package.get("plan_id"),
+            "package": package,
+        }
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+        return {key: body[key] for key in
+                ("checkpoint_id", "saved_at", "package_id", "plan_id")}
+
+    def list_site_packages(self) -> dict[str, Any]:
+        target = self._site_package_dir()
+        items = []
+        for path in sorted(target.glob("*.json"), reverse=True) if target.exists() else []:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                package = data.get("package") if isinstance(data.get("package"), dict) else {}
+                brief = package.get("brief") if isinstance(package.get("brief"), dict) else {}
+                items.append({
+                    "checkpoint_id": data["checkpoint_id"], "saved_at": data["saved_at"],
+                    "package_id": data["package_id"], "plan_id": data.get("plan_id"),
+                    "topic": brief.get("industry") or brief.get("offer") or "",
+                })
+            except (OSError, ValueError, KeyError):
+                continue
+        items.sort(key=lambda item: item["saved_at"], reverse=True)
+        return {"checkpoints": items, "count": len(items)}
+
+    def load_site_package(self, checkpoint_id: str) -> dict[str, Any]:
+        if not checkpoint_id or Path(checkpoint_id).name != checkpoint_id:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Некорректный checkpoint_id")
+        path = self._site_package_dir() / f"{checkpoint_id}.json"
+        if not path.is_file():
+            raise errors.TobizError(errors.NOT_FOUND,
+                                    f"Контрольная точка {checkpoint_id} не найдена")
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise errors.TobizError(errors.CONFLICT, "Контрольная точка повреждена") from exc
+        if data.get("checkpoint_id") != checkpoint_id or not isinstance(data.get("package"), dict):
+            raise errors.TobizError(errors.CONFLICT, "Контрольная точка повреждена")
+        return data
 
     async def restore_page_backup(self, project_id: str, page_id: str,
                                   backup_id: str, confirm: bool = False) -> dict[str, Any]:
@@ -1360,6 +1417,7 @@ class Service:
                 "batch_site_package_media_upload",
                 "safe_site_package_content_fill",
                 "resumable_site_package_status",
+                "persistent_site_package_checkpoints",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

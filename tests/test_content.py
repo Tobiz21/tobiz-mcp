@@ -417,6 +417,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'batch_site_package_media_upload' in result['features']
     assert 'safe_site_package_content_fill' in result['features']
     assert 'resumable_site_package_status' in result['features']
+    assert 'persistent_site_package_checkpoints' in result['features']
     assert 'verified_image_upload_metadata' in result['features']
     assert 'post_build_plan_conformance' in result['features']
 

@@ -124,3 +124,26 @@ def test_restore_requires_confirmation_and_rejects_path(tmp_path):
         run_mocked(service.restore_page_backup("1", "2", "missing", confirm=False))
     with pytest.raises(TobizError):
         run_mocked(service.restore_page_backup("1", "2", "../backup", confirm=True))
+
+
+def test_site_package_checkpoint_roundtrip_and_update(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    package = {'package_id': 'plan:v1', 'plan_id': 'plan',
+               'brief': {'industry': 'Бурение скважин'}, 'recipe': {'slots': []}}
+    first = service.save_site_package(package)
+    package['recipe']['slots'].append({'path': '/title', 'value': 'Скважина под ключ'})
+    second = service.save_site_package(package)
+    assert first['checkpoint_id'] == second['checkpoint_id']
+    listing = service.list_site_packages()
+    assert listing['count'] == 1
+    assert listing['checkpoints'][0]['topic'] == 'Бурение скважин'
+    loaded = service.load_site_package(first['checkpoint_id'])
+    assert loaded['package']['recipe']['slots'][0]['value'] == 'Скважина под ключ'
+
+
+def test_site_package_checkpoint_rejects_path_traversal(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    with pytest.raises(TobizError):
+        service.load_site_package('../checkpoint')
