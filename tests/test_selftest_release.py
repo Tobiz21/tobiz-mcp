@@ -53,6 +53,7 @@ class FakeService:
             "unified_pre_copy_build_gate",
             "one_call_site_package_scaffold",
             "direct_validated_site_package_build",
+            "batch_site_package_media_upload",
             "verified_image_upload_metadata",
             "post_build_plan_conformance",
         ]

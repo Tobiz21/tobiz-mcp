@@ -1357,6 +1357,7 @@ class Service:
                 "one_call_site_package_scaffold",
                 "direct_validated_site_package_build",
                 "verified_image_upload_metadata",
+                "batch_site_package_media_upload",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

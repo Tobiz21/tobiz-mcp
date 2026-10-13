@@ -129,6 +129,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "one_call_site_package_scaffold",
         "direct_validated_site_package_build",
         "verified_image_upload_metadata",
+        "batch_site_package_media_upload",
         "post_build_plan_conformance",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

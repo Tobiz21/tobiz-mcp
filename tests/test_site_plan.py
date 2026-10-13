@@ -1,3 +1,5 @@
+import pytest
+
 from tobiz_mcp.domain import design, site_plan
 from tobiz_mcp.domain.content import compact_blueprint, content_map, passport
 from tobiz_mcp.domain.draft import Draft, DraftBlock
@@ -207,3 +209,33 @@ def test_package_envelope_rejects_stale_plan_and_template():
     assert result['valid'] is False
     assert {item['code'] for item in result['blockers']} == {
         'package_plan_mismatch', 'package_identity_mismatch', 'package_template_mismatch'}
+
+
+def test_fill_package_media_returns_new_package_with_verified_metadata():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    package = site_plan.prepare_build_package(brief, plan, blueprint)
+    result = site_plan.fill_package_media(package, [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'asset_index': 0,
+        'media_asset': {'filename': 'hero.webp', 'width': 1920, 'height': 1080,
+                        'aspect_ratio': 1.7778, 'content_type': 'image/webp'},
+        'subject': 'Учитель объясняет задачу', 'safe_text_area': True,
+    }])
+    asset = result['package']['media_recipe']['groups'][0]['assets'][0]
+    assert result['filled_count'] == 1
+    assert asset['filename'] == 'hero.webp'
+    assert asset['width'] == 1920
+    assert asset['subject'] == 'Учитель объясняет задачу'
+    assert asset['safe_text_area'] is True
+    assert package['media_recipe']['groups'][0]['assets'][0]['filename'] == ''
+
+
+def test_fill_package_media_rejects_unknown_slot():
+    with pytest.raises(ValueError, match='Unknown media group'):
+        site_plan.fill_package_media({'media_recipe': {'groups': []}}, [{
+            'block_index': 9, 'path_pattern': '/image', 'asset_index': 0,
+            'media_asset': {'filename': 'photo.jpg'},
+        }])

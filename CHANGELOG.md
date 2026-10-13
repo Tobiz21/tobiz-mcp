@@ -28,6 +28,8 @@
   verification before the shared preflight and native one-save pipeline.
 - Image uploads now return byte-verified PNG, JPEG, GIF, WebP and SVG dimensions, aspect ratio,
   content type and a ready-to-use media-recipe asset instead of relying on agent-supplied geometry.
+- Added previewable batch media upload for complete site packages: native template block indexes are
+  resolved safely and byte-verified image metadata is written back without changing block values.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

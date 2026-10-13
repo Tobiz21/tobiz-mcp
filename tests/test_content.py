@@ -414,6 +414,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'unified_pre_copy_build_gate' in result['features']
     assert 'one_call_site_package_scaffold' in result['features']
     assert 'direct_validated_site_package_build' in result['features']
+    assert 'batch_site_package_media_upload' in result['features']
     assert 'verified_image_upload_metadata' in result['features']
     assert 'post_build_plan_conformance' in result['features']
 

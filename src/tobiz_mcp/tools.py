@@ -63,7 +63,7 @@ READ_TOOLS = {
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
-    "tobiz_build_site_package",
+    "tobiz_build_site_package", "tobiz_fill_package_media",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -955,6 +955,95 @@ def register(mcp: Any, service: Service) -> list[str]:
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         return site_plan_domain.prepare_build_package(brief, plan, blueprint)
+
+    @tool("tobiz_fill_package_media", "Preview or batch-upload local/base64 images into the exact media "
+          "slots of a complete site package. Resolves block_index against the locked native template, "
+          "uploads each file to that block and returns a new package with byte-verified media metadata. "
+          "Does not change block values or save the page. Run apply=false first, then apply=true.")
+    async def tobiz_fill_package_media(package: dict[str, Any], uploads: list[dict[str, Any]],
+                                       apply: bool = False) -> dict[str, Any]:
+        if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте полный пакет из tobiz_prepare_site_package")
+        if not isinstance(uploads, list) or not uploads:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "uploads должен быть непустым массивом")
+
+        plan = await tobiz_plan_site(package["brief"])
+        envelope = site_plan_domain.validate_package_envelope(package, plan)
+        if envelope["blockers"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "Пакет устарел или относится к другому плану",
+                "Повторно вызовите tobiz_prepare_site_package", raw=envelope)
+        selected = plan["template"]
+        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        block_ids = [block_id for block_id in source_draft.order
+                     if block_id in source_draft.blocks and not source_draft.blocks[block_id].deleted]
+        groups = {
+            (item.get("block_index"), item.get("path_pattern")): item
+            for item in (package.get("media_recipe") or {}).get("groups") or []
+            if isinstance(item, dict)
+        }
+        prepared = []
+        targets = set()
+        for position, item in enumerate(uploads):
+            if not isinstance(item, dict):
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"uploads[{position}] должен быть объектом")
+            block_index = item.get("block_index")
+            path_pattern = item.get("path_pattern")
+            asset_index = item.get("asset_index")
+            key = (block_index, path_pattern)
+            group = groups.get(key)
+            assets = group.get("assets") if isinstance(group, dict) else None
+            if not isinstance(block_index, int) or block_index < 0 or block_index >= len(block_ids):
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Некорректный block_index в uploads[{position}]")
+            if not isinstance(assets, list):
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Неизвестная media-группа в uploads[{position}]")
+            if not isinstance(asset_index, int) or asset_index < 0 or asset_index >= len(assets):
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Некорректный asset_index в uploads[{position}]")
+            target = (block_index, path_pattern, asset_index)
+            if target in targets:
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Повтор media-слота в uploads[{position}]")
+            targets.add(target)
+            path = str(item.get("path") or "").strip()
+            content_base64 = str(item.get("content_base64") or "").strip()
+            if bool(path) == bool(content_base64):
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT,
+                    f"В uploads[{position}] укажите ровно один источник: path или content_base64")
+            prepared.append({**item, "block_id": block_ids[block_index], "path": path,
+                             "content_base64": content_base64})
+
+        mapping = [{key: item.get(key) for key in
+                    ("block_index", "block_id", "path_pattern", "asset_index", "file_name")}
+                   for item in prepared]
+        if not apply:
+            return {"preview": True, "package_id": package.get("package_id"),
+                    "upload_count": len(prepared), "mappings": mapping,
+                    "next_action": "Повторить с apply=true"}
+        if service.config.read_only:
+            raise errors.read_only()
+
+        uploaded = []
+        for item in prepared:
+            result = await service.upload_image(
+                selected["project_id"], selected["page_id"], item["block_id"],
+                item["path"] or None, item["content_base64"] or None,
+                item.get("file_name") or None)
+            record = {key: item.get(key) for key in
+                      ("block_index", "path_pattern", "asset_index", "subject")}
+            record["media_asset"] = result["media_asset"]
+            if "safe_text_area" in item:
+                record["safe_text_area"] = item.get("safe_text_area") is True
+            uploaded.append(record)
+        filled = site_plan_domain.fill_package_media(package, uploaded)
+        return {"preview": False, "package_id": package.get("package_id"),
+                "upload_count": len(uploaded), **filled,
+                "next_action": "Передать возвращенный package в tobiz_build_site_package"}
 
     @tool("tobiz_build_site_package", "Preview or build directly from the complete object returned by "
           "tobiz_prepare_site_package. Recomputes the plan, rejects stale or mixed package/template IDs, "

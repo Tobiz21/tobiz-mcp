@@ -513,3 +513,35 @@ def validate_package_envelope(package: dict[str, Any], plan: dict[str, Any]) -> 
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
     return {"valid": not blockers, "expected_package_id": expected_package_id,
             "issues": issues, "blockers": blockers}
+
+
+def fill_package_media(package: dict[str, Any], uploaded: list[dict[str, Any]]) -> dict[str, Any]:
+    """Place verified upload metadata into exact package media slots."""
+    updated = json.loads(json.dumps(package, ensure_ascii=False))
+    groups = {
+        (item.get("block_index"), item.get("path_pattern")): item
+        for item in (updated.get("media_recipe") or {}).get("groups") or []
+        if isinstance(item, dict)
+    }
+    filled = []
+    for item in uploaded:
+        key = (item.get("block_index"), item.get("path_pattern"))
+        group = groups.get(key)
+        index = item.get("asset_index")
+        if group is None:
+            raise ValueError(f"Unknown media group: {key}")
+        assets = group.get("assets") if isinstance(group.get("assets"), list) else []
+        if not isinstance(index, int) or index < 0 or index >= len(assets):
+            raise ValueError(f"Invalid asset_index for media group {key}: {index}")
+        metadata = item.get("media_asset") if isinstance(item.get("media_asset"), dict) else {}
+        if not metadata.get("filename"):
+            raise ValueError(f"Missing uploaded filename for media group {key}")
+        asset = {**assets[index], **metadata}
+        if str(item.get("subject") or "").strip():
+            asset["subject"] = str(item["subject"]).strip()
+        if "safe_text_area" in item:
+            asset["safe_text_area"] = item.get("safe_text_area") is True
+        assets[index] = asset
+        filled.append({"block_index": key[0], "path_pattern": key[1],
+                       "asset_index": index, "filename": metadata["filename"]})
+    return {"package": updated, "filled": filled, "filled_count": len(filled)}

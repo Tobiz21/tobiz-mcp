@@ -226,7 +226,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   `missing_evidence`; не заполняй пробелы выдуманными ценами, отзывами, опытом, гарантиями,
   сроками или контактами. Заполни `recipe`, вызови `tobiz_validate_site_recipe` и устрани
   `blockers` до копирования страницы. Затем заполни `media_recipe` по точным `photo_requirements`,
-  вызови `tobiz_validate_media_recipe` и исправь разрешение, ориентацию, безопасную область,
+  загружай подготовленные файлы одной командой `tobiz_fill_package_media(package, uploads,
+  apply=false)`, проверь сопоставление слотов и повтори с `apply=true`. Продолжай только с пакетом
+  из ответа: он содержит измеренные параметры файлов, а штатные блоки еще не изменены. Вызови
+  `tobiz_validate_media_recipe` и исправь разрешение, ориентацию, безопасную область,
   пропорции, заглушки и повторы. Передай `plan_id`, `recipe` и проверенный `media_recipe` в
   `tobiz_build_quality_page`. Для чернового каркаса с одной заглушкой явно укажи в брифе
   `allow_placeholders=true`; не называй такой результат качественной сборкой.

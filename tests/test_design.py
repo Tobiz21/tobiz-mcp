@@ -81,6 +81,7 @@ def test_design_tools_are_registered_as_read_only_operations():
     assert {'tobiz_plan_site', 'tobiz_compile_site_content', 'tobiz_validate_site_recipe',
             'tobiz_validate_media_recipe',
             'tobiz_prepare_site_package',
+            'tobiz_fill_package_media',
             'tobiz_preflight_site_build',
             'tobiz_build_site_package',
             'tobiz_audit_claims',
