@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import functools
+import json
 import time
 from typing import Annotated, Any, Callable
 
@@ -1004,7 +1005,9 @@ def register(mcp: Any, service: Service) -> list[str]:
         filled["progress"] = site_plan_domain.package_progress(updated, filled["preflight"])
         filled["next_action"] = filled["progress"]["next_action"]
         if save_checkpoint:
-            filled["checkpoint"] = service.save_site_package(updated)
+            expected_hash = str((package.get("checkpoint") or {}).get("content_hash") or "")
+            filled["checkpoint"] = service.save_site_package(
+                updated, expected_content_hash=expected_hash)
             updated["checkpoint"] = filled["checkpoint"]
         return filled
 
@@ -1035,9 +1038,13 @@ def register(mcp: Any, service: Service) -> list[str]:
     @tool("tobiz_save_site_package", "Save or update a validated site-package checkpoint in local MCP "
           "storage so work can resume after reconnecting or in another AI client. Atomic local write only; "
           "does not edit TOBIZ. Returns checkpoint_id and current progress.")
-    async def tobiz_save_site_package(package: dict[str, Any]) -> dict[str, Any]:
+    async def tobiz_save_site_package(package: dict[str, Any],
+                                      expected_content_hash: str = "") -> dict[str, Any]:
         status = await tobiz_site_package_status(package)
-        checkpoint = service.save_site_package(package)
+        expected_hash = expected_content_hash or str(
+            (package.get("checkpoint") or {}).get("content_hash") or "")
+        checkpoint = service.save_site_package(
+            package, expected_content_hash=expected_hash)
         return {**checkpoint, "progress": status["progress"]}
 
     @tool("tobiz_list_site_packages", "List locally saved site-package checkpoints without exposing "
@@ -1051,10 +1058,13 @@ def register(mcp: Any, service: Service) -> list[str]:
           "next action. Read-only for TOBIZ.")
     async def tobiz_load_site_package(checkpoint_id: str) -> dict[str, Any]:
         checkpoint = service.load_site_package(checkpoint_id)
-        status = await tobiz_site_package_status(checkpoint["package"])
-        return {key: checkpoint.get(key) for key in
-                ("checkpoint_id", "saved_at", "package_id", "plan_id")} | {
-                    "package": checkpoint["package"], "progress": status["progress"],
+        metadata = {key: checkpoint.get(key) for key in
+                    ("checkpoint_id", "saved_at", "package_id", "plan_id", "content_hash")}
+        package = json.loads(json.dumps(checkpoint["package"], ensure_ascii=False))
+        package["checkpoint"] = metadata
+        status = await tobiz_site_package_status(package)
+        return metadata | {
+                    "package": package, "progress": status["progress"],
                     "preflight": status["preflight"]}
 
     @tool("tobiz_list_site_package_revisions", "List up to 20 previous versions of one local site-package "
@@ -1069,6 +1079,9 @@ def register(mcp: Any, service: Service) -> list[str]:
             checkpoint_id: str, revision_id: str, confirm: bool = False) -> dict[str, Any]:
         restored = service.restore_site_package_revision(
             checkpoint_id, revision_id, confirm=confirm)
+        restored["package"]["checkpoint"] = {key: restored.get(key) for key in
+                                               ("checkpoint_id", "saved_at", "package_id",
+                                                "plan_id", "content_hash")}
         status = await tobiz_site_package_status(restored["package"])
         return {**restored, "progress": status["progress"],
                 "preflight": status["preflight"]}
@@ -1165,7 +1178,9 @@ def register(mcp: Any, service: Service) -> list[str]:
                 record["safe_text_area"] = item.get("safe_text_area") is True
             uploaded.append(record)
         filled = site_plan_domain.fill_package_media(package, uploaded)
-        checkpoint = service.save_site_package(filled["package"]) if save_checkpoint else None
+        expected_hash = str((package.get("checkpoint") or {}).get("content_hash") or "")
+        checkpoint = service.save_site_package(
+            filled["package"], expected_content_hash=expected_hash) if save_checkpoint else None
         if checkpoint:
             filled["package"]["checkpoint"] = checkpoint
         return {"preview": False, "package_id": package.get("package_id"),

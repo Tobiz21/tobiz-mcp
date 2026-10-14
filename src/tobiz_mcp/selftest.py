@@ -135,6 +135,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "persistent_site_package_checkpoints",
         "automatic_site_package_checkpoints",
         "versioned_site_package_checkpoints",
+        "optimistic_site_package_concurrency",
         "post_build_plan_conformance",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

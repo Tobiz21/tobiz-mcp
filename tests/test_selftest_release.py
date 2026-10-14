@@ -59,6 +59,7 @@ class FakeService:
             "persistent_site_package_checkpoints",
             "automatic_site_package_checkpoints",
             "versioned_site_package_checkpoints",
+            "optimistic_site_package_concurrency",
             "verified_image_upload_metadata",
             "post_build_plan_conformance",
         ]

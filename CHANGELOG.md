@@ -40,6 +40,8 @@
   opt-out remains available, and explicit confirmed deletion provides local data lifecycle control.
 - Package checkpoints now retain up to 20 content-addressed previous versions, avoid duplicate revisions,
   and support confirmed restoration while preserving the displaced current version.
+- Added optimistic checkpoint concurrency: stale AI clients can no longer silently overwrite a newer
+  package, while normal prepare/load/content/media flows propagate the content hash automatically.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.

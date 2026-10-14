@@ -252,6 +252,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   сохраняется автоматически. Для отката сначала вызови
   `tobiz_list_site_package_revisions`, затем `tobiz_restore_site_package_revision(confirm=true)`;
   текущая версия перед восстановлением тоже останется в истории. MCP хранит до 20 версий.
+  Всегда передавай возвращенный `package` целиком и не удаляй из него `checkpoint.content_hash`:
+  это блокирует молчаливую перезапись изменений другого ИИ-клиента. При `CONFLICT` загрузи свежий
+  пакет через `tobiz_load_site_package` и повтори только свою правку.
   Для каждого изображения бери `media_asset` прямо из ответа `tobiz_upload_image`: MCP сам измеряет
   width, height, формат и aspect ratio по байтам файла. Не вписывай геометрию вручную.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,

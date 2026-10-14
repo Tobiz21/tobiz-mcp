@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -307,10 +309,48 @@ class Service:
                                separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def save_site_package(self, package: dict[str, Any]) -> dict[str, Any]:
+    @contextmanager
+    def _site_package_lock(self, checkpoint_id: str):
+        target = self._site_package_dir()
+        target.mkdir(parents=True, exist_ok=True)
+        path = target / f".{checkpoint_id}.lock"
+        deadline = time.monotonic() + 5
+        descriptor = None
+        while descriptor is None:
+            try:
+                descriptor = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                try:
+                    if time.time() - path.stat().st_mtime > 30:
+                        path.unlink(missing_ok=True)
+                        continue
+                except OSError:
+                    pass
+                if time.monotonic() >= deadline:
+                    raise errors.TobizError(
+                        errors.CONFLICT,
+                        "Контрольная точка занята другим клиентом",
+                        "Повторите сохранение через несколько секунд")
+                time.sleep(0.05)
+        try:
+            os.write(descriptor, str(os.getpid()).encode("ascii"))
+            yield
+        finally:
+            os.close(descriptor)
+            path.unlink(missing_ok=True)
+
+    def save_site_package(self, package: dict[str, Any],
+                          expected_content_hash: str = "") -> dict[str, Any]:
         package_id = str(package.get("package_id") or "").strip()
         if not package_id:
             raise errors.TobizError(errors.BAD_ARGUMENT, "В пакете отсутствует package_id")
+        checkpoint_id = hashlib.sha256(package_id.encode("utf-8")).hexdigest()[:24]
+        with self._site_package_lock(checkpoint_id):
+            return self._save_site_package_locked(package, expected_content_hash)
+
+    def _save_site_package_locked(self, package: dict[str, Any],
+                                  expected_content_hash: str = "") -> dict[str, Any]:
+        package_id = str(package.get("package_id") or "").strip()
         checkpoint_id = hashlib.sha256(package_id.encode("utf-8")).hexdigest()[:24]
         target = self._site_package_dir()
         target.mkdir(parents=True, exist_ok=True)
@@ -327,9 +367,19 @@ class Service:
                     previous = candidate
             except (OSError, ValueError):
                 previous = None
+        previous_hash = ""
         if previous is not None:
             previous_hash = previous.get("content_hash") or self._site_package_hash(
                 previous["package"])
+        if expected_content_hash and expected_content_hash != previous_hash:
+            raise errors.TobizError(
+                errors.CONFLICT,
+                "Контрольная точка уже изменена другим клиентом",
+                "Загрузите свежий пакет через tobiz_load_site_package и повторите правку",
+                raw={"checkpoint_id": checkpoint_id,
+                     "expected_content_hash": expected_content_hash,
+                     "current_content_hash": previous_hash or None})
+        if previous is not None:
             if previous_hash != content_hash:
                 revision_dir = self._site_package_revision_dir(checkpoint_id)
                 revision_dir.mkdir(parents=True, exist_ok=True)
@@ -368,6 +418,7 @@ class Service:
                 items.append({
                     "checkpoint_id": data["checkpoint_id"], "saved_at": data["saved_at"],
                     "package_id": data["package_id"], "plan_id": data.get("plan_id"),
+                    "content_hash": data.get("content_hash"),
                     "topic": brief.get("industry") or brief.get("offer") or "",
                 })
             except (OSError, ValueError, KeyError):
@@ -1523,6 +1574,7 @@ class Service:
                 "persistent_site_package_checkpoints",
                 "automatic_site_package_checkpoints",
                 "versioned_site_package_checkpoints",
+                "optimistic_site_package_concurrency",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

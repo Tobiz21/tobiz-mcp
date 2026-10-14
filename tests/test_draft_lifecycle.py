@@ -189,3 +189,22 @@ def test_site_package_checkpoint_keeps_twenty_revisions(tmp_path):
     revisions = service.list_site_package_revisions(saved['checkpoint_id'])
     assert revisions['count'] == 20
     assert len({item['revision_id'] for item in revisions['revisions']}) == 20
+
+
+def test_site_package_checkpoint_rejects_stale_client(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    first = service.save_site_package(
+        {'package_id': 'plan:v1', 'plan_id': 'plan', 'value': 1})
+    second = service.save_site_package(
+        {'package_id': 'plan:v1', 'plan_id': 'plan', 'value': 2},
+        expected_content_hash=first['content_hash'])
+    with pytest.raises(TobizError) as exc:
+        service.save_site_package(
+            {'package_id': 'plan:v1', 'plan_id': 'plan', 'value': 3},
+            expected_content_hash=first['content_hash'])
+    assert exc.value.code == 'CONFLICT'
+    assert exc.value.raw['current_content_hash'] == second['content_hash']
+    loaded = service.load_site_package(first['checkpoint_id'])
+    assert loaded['package']['value'] == 2
+    assert service.list_site_package_revisions(first['checkpoint_id'])['count'] == 1
