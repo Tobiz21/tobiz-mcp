@@ -248,7 +248,10 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   переподключения найди работу через `tobiz_list_site_packages`, загрузи ее
   `tobiz_load_site_package` и продолжай по возвращенному `next_action`; не проси пользователя
   пересылать большой JSON повторно. Старый пакет удаляй только явной командой
-  `tobiz_delete_site_package(confirm=true)`.
+  `tobiz_delete_site_package(confirm=true)`. При каждом изменении checkpoint прежняя версия
+  сохраняется автоматически. Для отката сначала вызови
+  `tobiz_list_site_package_revisions`, затем `tobiz_restore_site_package_revision(confirm=true)`;
+  текущая версия перед восстановлением тоже останется в истории. MCP хранит до 20 версий.
   Для каждого изображения бери `media_asset` прямо из ответа `tobiz_upload_image`: MCP сам измеряет
   width, height, формат и aspect ratio по байтам файла. Не вписывай геометрию вручную.
   После сборки не оценивай результат разрозненными командами: используй встроенные `plan_check`,

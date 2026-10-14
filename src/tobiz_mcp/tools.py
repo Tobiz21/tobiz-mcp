@@ -66,7 +66,8 @@ READ_TOOLS = {
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_site_package_status",
     "tobiz_save_site_package", "tobiz_list_site_packages", "tobiz_load_site_package",
-    "tobiz_delete_site_package",
+    "tobiz_delete_site_package", "tobiz_list_site_package_revisions",
+    "tobiz_restore_site_package_revision",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -1055,6 +1056,22 @@ def register(mcp: Any, service: Service) -> list[str]:
                 ("checkpoint_id", "saved_at", "package_id", "plan_id")} | {
                     "package": checkpoint["package"], "progress": status["progress"],
                     "preflight": status["preflight"]}
+
+    @tool("tobiz_list_site_package_revisions", "List up to 20 previous versions of one local site-package "
+          "checkpoint. Returns metadata only and never changes TOBIZ or the current package.")
+    async def tobiz_list_site_package_revisions(checkpoint_id: str) -> dict[str, Any]:
+        return service.list_site_package_revisions(checkpoint_id)
+
+    @tool("tobiz_restore_site_package_revision", "Restore a selected previous local site-package version. "
+          "The current version is archived first, TOBIZ is not changed, and confirm=true is required. "
+          "Returns the restored package revalidated against current TOBIZ state.")
+    async def tobiz_restore_site_package_revision(
+            checkpoint_id: str, revision_id: str, confirm: bool = False) -> dict[str, Any]:
+        restored = service.restore_site_package_revision(
+            checkpoint_id, revision_id, confirm=confirm)
+        status = await tobiz_site_package_status(restored["package"])
+        return {**restored, "progress": status["progress"],
+                "preflight": status["preflight"]}
 
     @tool("tobiz_delete_site_package", "Delete one local site-package checkpoint. This never changes "
           "TOBIZ, but permanently removes the local client package and therefore requires confirm=true.")

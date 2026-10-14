@@ -298,6 +298,15 @@ class Service:
     def _site_package_dir(self) -> Path:
         return self.config.audit_dir / "site-packages"
 
+    def _site_package_revision_dir(self, checkpoint_id: str) -> Path:
+        return self._site_package_dir() / "revisions" / checkpoint_id
+
+    @staticmethod
+    def _site_package_hash(package: dict[str, Any]) -> str:
+        canonical = json.dumps(package, ensure_ascii=False, sort_keys=True,
+                               separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     def save_site_package(self, package: dict[str, Any]) -> dict[str, Any]:
         package_id = str(package.get("package_id") or "").strip()
         if not package_id:
@@ -308,17 +317,45 @@ class Service:
         path = target / f"{checkpoint_id}.json"
         stored_package = json.loads(json.dumps(package, ensure_ascii=False))
         stored_package.pop("checkpoint", None)
+        content_hash = self._site_package_hash(stored_package)
+        previous = None
+        if path.is_file():
+            try:
+                candidate = json.loads(path.read_text(encoding="utf-8"))
+                if (candidate.get("checkpoint_id") == checkpoint_id
+                        and isinstance(candidate.get("package"), dict)):
+                    previous = candidate
+            except (OSError, ValueError):
+                previous = None
+        if previous is not None:
+            previous_hash = previous.get("content_hash") or self._site_package_hash(
+                previous["package"])
+            if previous_hash != content_hash:
+                revision_dir = self._site_package_revision_dir(checkpoint_id)
+                revision_dir.mkdir(parents=True, exist_ok=True)
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                revision_id = f"{stamp}-{previous_hash[:12]}"
+                archived = {**previous, "content_hash": previous_hash,
+                            "revision_id": revision_id}
+                revision_path = revision_dir / f"{revision_id}.json"
+                temporary_revision = revision_path.with_suffix(".tmp")
+                temporary_revision.write_text(
+                    json.dumps(archived, ensure_ascii=False), encoding="utf-8")
+                temporary_revision.replace(revision_path)
+                revisions = sorted(revision_dir.glob("*.json"), reverse=True)
+                for expired in revisions[20:]:
+                    expired.unlink(missing_ok=True)
         body = {
             "schema_version": 1, "checkpoint_id": checkpoint_id,
             "saved_at": datetime.now(timezone.utc).isoformat(),
             "package_id": package_id, "plan_id": package.get("plan_id"),
-            "package": stored_package,
+            "content_hash": content_hash, "package": stored_package,
         }
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         temporary.replace(path)
         return {key: body[key] for key in
-                ("checkpoint_id", "saved_at", "package_id", "plan_id")}
+                ("checkpoint_id", "saved_at", "package_id", "plan_id", "content_hash")}
 
     def list_site_packages(self) -> dict[str, Any]:
         target = self._site_package_dir()
@@ -353,6 +390,46 @@ class Service:
             raise errors.TobizError(errors.CONFLICT, "Контрольная точка повреждена")
         return data
 
+    def list_site_package_revisions(self, checkpoint_id: str) -> dict[str, Any]:
+        self.load_site_package(checkpoint_id)
+        target = self._site_package_revision_dir(checkpoint_id)
+        items = []
+        for path in sorted(target.glob("*.json"), reverse=True) if target.exists() else []:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if (data.get("checkpoint_id") != checkpoint_id
+                        or not isinstance(data.get("package"), dict)):
+                    continue
+                items.append({key: data.get(key) for key in
+                              ("revision_id", "saved_at", "package_id", "plan_id",
+                               "content_hash")})
+            except (OSError, ValueError):
+                continue
+        return {"checkpoint_id": checkpoint_id, "revisions": items, "count": len(items)}
+
+    def restore_site_package_revision(self, checkpoint_id: str, revision_id: str,
+                                      confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Восстановление требует confirm=true")
+        if not revision_id or Path(revision_id).name != revision_id:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Некорректный revision_id")
+        self.load_site_package(checkpoint_id)
+        path = self._site_package_revision_dir(checkpoint_id) / f"{revision_id}.json"
+        if not path.is_file():
+            raise errors.TobizError(errors.NOT_FOUND, f"Версия {revision_id} не найдена")
+        try:
+            revision = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise errors.TobizError(errors.CONFLICT, "Версия контрольной точки повреждена") from exc
+        if (revision.get("checkpoint_id") != checkpoint_id
+                or revision.get("revision_id") != revision_id
+                or not isinstance(revision.get("package"), dict)):
+            raise errors.TobizError(errors.CONFLICT, "Версия контрольной точки повреждена")
+        saved = self.save_site_package(revision["package"])
+        return {**saved, "restored": True, "restored_revision_id": revision_id,
+                "package": revision["package"]}
+
     def delete_site_package(self, checkpoint_id: str, confirm: bool = False) -> dict[str, Any]:
         if not confirm:
             raise errors.TobizError(errors.BAD_ARGUMENT, "Удаление требует confirm=true")
@@ -363,7 +440,19 @@ class Service:
             raise errors.TobizError(errors.NOT_FOUND,
                                     f"Контрольная точка {checkpoint_id} не найдена")
         path.unlink()
-        return {"deleted": True, "checkpoint_id": checkpoint_id}
+        deleted_revisions = 0
+        revision_dir = self._site_package_revision_dir(checkpoint_id)
+        if revision_dir.exists():
+            for revision in revision_dir.glob("*.json"):
+                revision.unlink()
+                deleted_revisions += 1
+            try:
+                revision_dir.rmdir()
+                revision_dir.parent.rmdir()
+            except OSError:
+                pass
+        return {"deleted": True, "checkpoint_id": checkpoint_id,
+                "deleted_revisions": deleted_revisions}
 
     async def restore_page_backup(self, project_id: str, page_id: str,
                                   backup_id: str, confirm: bool = False) -> dict[str, Any]:
@@ -1433,6 +1522,7 @@ class Service:
                 "resumable_site_package_status",
                 "persistent_site_package_checkpoints",
                 "automatic_site_package_checkpoints",
+                "versioned_site_package_checkpoints",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

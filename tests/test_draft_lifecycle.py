@@ -141,6 +141,18 @@ def test_site_package_checkpoint_roundtrip_and_update(tmp_path):
     loaded = service.load_site_package(first['checkpoint_id'])
     assert loaded['package']['recipe']['slots'][0]['value'] == 'Скважина под ключ'
     assert 'checkpoint' not in loaded['package']
+    revisions = service.list_site_package_revisions(first['checkpoint_id'])
+    assert revisions['count'] == 1
+    revision_id = revisions['revisions'][0]['revision_id']
+    service.save_site_package(package)
+    assert service.list_site_package_revisions(first['checkpoint_id'])['count'] == 1
+    with pytest.raises(TobizError):
+        service.restore_site_package_revision(first['checkpoint_id'], revision_id)
+    restored = service.restore_site_package_revision(
+        first['checkpoint_id'], revision_id, confirm=True)
+    assert restored['restored'] is True
+    assert restored['package']['recipe']['slots'] == []
+    assert service.list_site_package_revisions(first['checkpoint_id'])['count'] == 2
 
 
 def test_site_package_checkpoint_rejects_path_traversal(tmp_path):
@@ -148,14 +160,32 @@ def test_site_package_checkpoint_rejects_path_traversal(tmp_path):
     service.config = SimpleNamespace(audit_dir=tmp_path)
     with pytest.raises(TobizError):
         service.load_site_package('../checkpoint')
+    with pytest.raises(TobizError):
+        service.list_site_package_revisions('../checkpoint')
+    with pytest.raises(TobizError):
+        service.restore_site_package_revision('checkpoint', '../revision', confirm=True)
 
 
 def test_site_package_checkpoint_delete_requires_confirmation(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(audit_dir=tmp_path)
-    saved = service.save_site_package({'package_id': 'plan:v1', 'plan_id': 'plan'})
+    saved = service.save_site_package({'package_id': 'plan:v1', 'plan_id': 'plan', 'value': 1})
+    service.save_site_package({'package_id': 'plan:v1', 'plan_id': 'plan', 'value': 2})
     with pytest.raises(TobizError):
         service.delete_site_package(saved['checkpoint_id'])
     result = service.delete_site_package(saved['checkpoint_id'], confirm=True)
     assert result['deleted'] is True
+    assert result['deleted_revisions'] == 1
     assert service.list_site_packages()['count'] == 0
+
+
+def test_site_package_checkpoint_keeps_twenty_revisions(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    saved = None
+    for value in range(23):
+        saved = service.save_site_package(
+            {'package_id': 'plan:v1', 'plan_id': 'plan', 'value': value})
+    revisions = service.list_site_package_revisions(saved['checkpoint_id'])
+    assert revisions['count'] == 20
+    assert len({item['revision_id'] for item in revisions['revisions']}) == 20

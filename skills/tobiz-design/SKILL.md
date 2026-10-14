@@ -35,7 +35,9 @@ description: Design and visually refine conversion-focused TOBIZ websites using 
 по его `next_action` и точным спискам `missing`; не анализируй весь шаблон заново.
 Checkpoint создается автоматически после подготовки, текстов и примененной загрузки медиа. В новой
 сессии используй `tobiz_list_site_packages` и `tobiz_load_site_package`, затем заново оцени только
-указанные блокеры.
+указанные блокеры. Если автозаполнение ухудшило пакет, выбери предыдущую версию через
+`tobiz_list_site_package_revisions` и восстанови ее
+`tobiz_restore_site_package_revision(confirm=true)`.
 Размеры и пропорции фото бери только из `media_asset`, возвращенного `tobiz_upload_image`, а не из
 предположения по имени файла или внешнему описанию.
 Перед выдачей запусти `tobiz_audit_claims` или проверь одноименный результат конвейера. Фактические
