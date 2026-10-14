@@ -57,6 +57,7 @@ class FakeService:
             "safe_site_package_content_fill",
             "resumable_site_package_status",
             "persistent_site_package_checkpoints",
+            "automatic_site_package_checkpoints",
             "verified_image_upload_metadata",
             "post_build_plan_conformance",
         ]

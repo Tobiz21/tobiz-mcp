@@ -37,6 +37,7 @@ REQUIRED_TOOLS = {
     "tobiz_save_site_package",
     "tobiz_list_site_packages",
     "tobiz_load_site_package",
+    "tobiz_delete_site_package",
     "tobiz_fill_package_media",
     "tobiz_build_site_package",
     "tobiz_audit_claims",

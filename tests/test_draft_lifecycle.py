@@ -129,7 +129,7 @@ def test_restore_requires_confirmation_and_rejects_path(tmp_path):
 def test_site_package_checkpoint_roundtrip_and_update(tmp_path):
     service = Service.__new__(Service)
     service.config = SimpleNamespace(audit_dir=tmp_path)
-    package = {'package_id': 'plan:v1', 'plan_id': 'plan',
+    package = {'package_id': 'plan:v1', 'plan_id': 'plan', 'checkpoint': {'old': True},
                'brief': {'industry': 'Бурение скважин'}, 'recipe': {'slots': []}}
     first = service.save_site_package(package)
     package['recipe']['slots'].append({'path': '/title', 'value': 'Скважина под ключ'})
@@ -140,6 +140,7 @@ def test_site_package_checkpoint_roundtrip_and_update(tmp_path):
     assert listing['checkpoints'][0]['topic'] == 'Бурение скважин'
     loaded = service.load_site_package(first['checkpoint_id'])
     assert loaded['package']['recipe']['slots'][0]['value'] == 'Скважина под ключ'
+    assert 'checkpoint' not in loaded['package']
 
 
 def test_site_package_checkpoint_rejects_path_traversal(tmp_path):
@@ -147,3 +148,14 @@ def test_site_package_checkpoint_rejects_path_traversal(tmp_path):
     service.config = SimpleNamespace(audit_dir=tmp_path)
     with pytest.raises(TobizError):
         service.load_site_package('../checkpoint')
+
+
+def test_site_package_checkpoint_delete_requires_confirmation(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    saved = service.save_site_package({'package_id': 'plan:v1', 'plan_id': 'plan'})
+    with pytest.raises(TobizError):
+        service.delete_site_package(saved['checkpoint_id'])
+    result = service.delete_site_package(saved['checkpoint_id'], confirm=True)
+    assert result['deleted'] is True
+    assert service.list_site_packages()['count'] == 0

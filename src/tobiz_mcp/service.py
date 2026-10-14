@@ -306,11 +306,13 @@ class Service:
         target = self._site_package_dir()
         target.mkdir(parents=True, exist_ok=True)
         path = target / f"{checkpoint_id}.json"
+        stored_package = json.loads(json.dumps(package, ensure_ascii=False))
+        stored_package.pop("checkpoint", None)
         body = {
             "schema_version": 1, "checkpoint_id": checkpoint_id,
             "saved_at": datetime.now(timezone.utc).isoformat(),
             "package_id": package_id, "plan_id": package.get("plan_id"),
-            "package": package,
+            "package": stored_package,
         }
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
@@ -350,6 +352,18 @@ class Service:
         if data.get("checkpoint_id") != checkpoint_id or not isinstance(data.get("package"), dict):
             raise errors.TobizError(errors.CONFLICT, "Контрольная точка повреждена")
         return data
+
+    def delete_site_package(self, checkpoint_id: str, confirm: bool = False) -> dict[str, Any]:
+        if not confirm:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Удаление требует confirm=true")
+        if not checkpoint_id or Path(checkpoint_id).name != checkpoint_id:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Некорректный checkpoint_id")
+        path = self._site_package_dir() / f"{checkpoint_id}.json"
+        if not path.is_file():
+            raise errors.TobizError(errors.NOT_FOUND,
+                                    f"Контрольная точка {checkpoint_id} не найдена")
+        path.unlink()
+        return {"deleted": True, "checkpoint_id": checkpoint_id}
 
     async def restore_page_backup(self, project_id: str, page_id: str,
                                   backup_id: str, confirm: bool = False) -> dict[str, Any]:
@@ -1418,6 +1432,7 @@ class Service:
                 "safe_site_package_content_fill",
                 "resumable_site_package_status",
                 "persistent_site_package_checkpoints",
+                "automatic_site_package_checkpoints",
                 "post_build_plan_conformance",
             ],
             "transport": self.config.transport,

@@ -66,6 +66,7 @@ READ_TOOLS = {
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_site_package_status",
     "tobiz_save_site_package", "tobiz_list_site_packages", "tobiz_load_site_package",
+    "tobiz_delete_site_package",
     "tobiz_audit_claims", "tobiz_check_site_plan",
 }
 
@@ -950,13 +951,17 @@ def register(mcp: Any, service: Service) -> list[str]:
           "TOBIZ page in one call. Returns stable plan_id, locked template, every text/link slot with role "
           "and mobile limit, every exact image path with visual requirements, SEO fields and missing client "
           "evidence. Source-template copy is deliberately omitted. Read-only.")
-    async def tobiz_prepare_site_package(brief: dict[str, Any], goal: str = "") -> dict[str, Any]:
+    async def tobiz_prepare_site_package(brief: dict[str, Any], goal: str = "",
+                                         save_checkpoint: bool = True) -> dict[str, Any]:
         plan = await tobiz_plan_site(brief, goal)
         selected = plan["template"]
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
-        return site_plan_domain.prepare_build_package(brief, plan, blueprint)
+        package = site_plan_domain.prepare_build_package(brief, plan, blueprint)
+        if save_checkpoint:
+            package["checkpoint"] = service.save_site_package(package)
+        return package
 
     @tool("tobiz_fill_package_content", "Fill exact text and SEO slots in a complete site package "
           "without editing its structure. Rejects unknown or duplicate block_index/path targets, "
@@ -964,7 +969,8 @@ def register(mcp: Any, service: Service) -> list[str]:
           "package preflight results. Read-only; use the returned package for the next step.")
     async def tobiz_fill_package_content(package: dict[str, Any],
                                          updates: list[dict[str, Any]],
-                                         seo: dict[str, Any] | None = None) -> dict[str, Any]:
+                                         seo: dict[str, Any] | None = None,
+                                         save_checkpoint: bool = True) -> dict[str, Any]:
         if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Передайте полный пакет из tobiz_prepare_site_package")
@@ -996,6 +1002,9 @@ def register(mcp: Any, service: Service) -> list[str]:
         filled["package_id"] = package.get("package_id")
         filled["progress"] = site_plan_domain.package_progress(updated, filled["preflight"])
         filled["next_action"] = filled["progress"]["next_action"]
+        if save_checkpoint:
+            filled["checkpoint"] = service.save_site_package(updated)
+            updated["checkpoint"] = filled["checkpoint"]
         return filled
 
     @tool("tobiz_site_package_status", "Resume a prepared site package safely. Revalidates its plan and "
@@ -1047,12 +1056,19 @@ def register(mcp: Any, service: Service) -> list[str]:
                     "package": checkpoint["package"], "progress": status["progress"],
                     "preflight": status["preflight"]}
 
+    @tool("tobiz_delete_site_package", "Delete one local site-package checkpoint. This never changes "
+          "TOBIZ, but permanently removes the local client package and therefore requires confirm=true.")
+    async def tobiz_delete_site_package(checkpoint_id: str,
+                                        confirm: bool = False) -> dict[str, Any]:
+        return service.delete_site_package(checkpoint_id, confirm=confirm)
+
     @tool("tobiz_fill_package_media", "Preview or batch-upload local/base64 images into the exact media "
           "slots of a complete site package. Resolves block_index against the locked native template, "
           "uploads each file to that block and returns a new package with byte-verified media metadata. "
           "Does not change block values or save the page. Run apply=false first, then apply=true.")
     async def tobiz_fill_package_media(package: dict[str, Any], uploads: list[dict[str, Any]],
-                                       apply: bool = False) -> dict[str, Any]:
+                                       apply: bool = False,
+                                       save_checkpoint: bool = True) -> dict[str, Any]:
         if not isinstance(package, dict) or not isinstance(package.get("brief"), dict):
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Передайте полный пакет из tobiz_prepare_site_package")
@@ -1132,8 +1148,12 @@ def register(mcp: Any, service: Service) -> list[str]:
                 record["safe_text_area"] = item.get("safe_text_area") is True
             uploaded.append(record)
         filled = site_plan_domain.fill_package_media(package, uploaded)
+        checkpoint = service.save_site_package(filled["package"]) if save_checkpoint else None
+        if checkpoint:
+            filled["package"]["checkpoint"] = checkpoint
         return {"preview": False, "package_id": package.get("package_id"),
                 "upload_count": len(uploaded), **filled,
+                **({"checkpoint": checkpoint} if checkpoint else {}),
                 "next_action": "Передать возвращенный package в tobiz_build_site_package"}
 
     @tool("tobiz_build_site_package", "Preview or build directly from the complete object returned by "

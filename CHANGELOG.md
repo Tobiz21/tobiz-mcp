@@ -36,6 +36,8 @@
   grouped blocker codes and one deterministic next action for any MCP client.
 - Added atomic local site-package checkpoints with list/load tools and live plan/template revalidation,
   allowing work to continue safely after MCP reconnects or across different AI clients.
+- Site package preparation, copy filling and applied media upload now checkpoint automatically; optional
+  opt-out remains available, and explicit confirmed deletion provides local data lifecycle control.
 - Added page-wide design-system analysis and safe native refinement with regression rollback.
 - Added resilient official Registry verification to the clean-install release gate.
 - Added a public multi-architecture GHCR image.
