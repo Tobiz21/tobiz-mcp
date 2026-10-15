@@ -216,3 +216,30 @@ def validate_values(block_type: Any, values: dict[str, Any]) -> None:
                 float(value)
             except (TypeError, ValueError):
                 raise TobizError(BAD_ARGUMENT, f"Поле {name} ожидает число, получено {value!r}")
+
+
+def normalize_values(block_type: Any, values: dict[str, Any]) -> dict[str, Any]:
+    """Convert common human-friendly editor values to exact native TOBIZ values."""
+    settings = {s.get("name"): s for s in (block_type.settings or []) if s.get("name")}
+    result = copy.deepcopy(values)
+    for name, value in result.items():
+        setting = settings.get(name) or {}
+        stype = setting.get("type") or ""
+        options = setting.get("vars")
+        if stype in _INT_TYPES and isinstance(value, str):
+            match = re.fullmatch(r"(-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:px)?", value.strip().lower())
+            if match:
+                result[name] = match.group(1)
+                value = result[name]
+        if stype not in _SELECT_TYPES - {"color", "colors"} or not isinstance(options, list):
+            continue
+        allowed = [o.get("val") for o in options if isinstance(o, dict)]
+        if value in allowed or value in ("", None):
+            continue
+        text = str(value).strip().lower()
+        matches = [option for option in allowed
+                   if str(option).strip().lower() == text
+                   or re.search(rf"(?:^|[^0-9]){re.escape(text)}$", str(option).strip().lower())]
+        if len(matches) == 1:
+            result[name] = matches[0]
+    return result

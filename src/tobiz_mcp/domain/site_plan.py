@@ -18,6 +18,23 @@ PHOTO_RULES = {
     "content_image": {"orientation": "match native slot", "ratio": "preserve source proportions", "safe_zone": "keep the subject inside the visible crop"},
 }
 
+
+def safe_system_title(value: str, fallback: str = "Новая страница") -> str:
+    """Return a TOBIZ panel-safe title without changing visible or SEO copy."""
+    title = str(value or "").replace("«", "").replace("»", "").replace('"', "")
+    title = re.sub(r"[^0-9A-Za-zА-Яа-яЁё _.,()\-]", " ", title)
+    title = re.sub(r"\s+", " ", title).strip(" .,-")
+    return title[:120] or fallback
+
+
+def _visible_media_paths(group: dict[str, Any]) -> list[str]:
+    paths = list(group.get("paths") or [])
+    if group.get("role") != "catalog_image" or not paths:
+        return paths
+    primary_field = str(group.get("path_pattern") or paths[0]).rsplit("/", 1)[-1]
+    visible = [path for path in paths if str(path).rsplit("/", 1)[-1] == primary_field]
+    return visible or paths[:1]
+
 EVIDENCE_REQUIREMENTS = {
     "lead_generation": (
         ("offer", ("offer", "service", "services"), "Что именно получает клиент"),
@@ -254,10 +271,14 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
 def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                           media_recipe: dict[str, Any]) -> dict[str, Any]:
     """Validate image assignments before a native template is copied."""
-    expected = {
-        (item.get("block_index"), item.get("path_pattern")): item
-        for item in blueprint.get("photo_slots") or []
-    }
+    expected = {}
+    for item in blueprint.get("photo_slots") or []:
+        spec = dict(item)
+        paths = _visible_media_paths(spec)
+        if paths != list(spec.get("paths") or []):
+            spec["paths"] = paths
+            spec["slots"] = len(paths)
+        expected[(spec.get("block_index"), spec.get("path_pattern"))] = spec
     supplied = {
         (item.get("block_index"), item.get("path_pattern")): item
         for item in media_recipe.get("groups") or [] if isinstance(item, dict)
@@ -449,8 +470,10 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
     }
     for group in blueprint.get("photo_slots") or []:
         requirement = requirements.get((group.get("block_index"), group.get("path_pattern")), {})
+        # Catalog blocks expose hidden image2/image3 fields even when cards show one image.
+        paths = _visible_media_paths(group)
         assets = []
-        for path in group.get("paths") or []:
+        for path in paths:
             asset = {"path": path, "filename": "", "width": 0, "height": 0,
                      "subject": ""}
             if group.get("role") == "background":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from tobiz_mcp.domain.blocks import control_schema
+from tobiz_mcp.domain.blocks import control_schema, normalize_values, validate_values
 
 
 def test_control_schema_returns_checkbox_dependencies_and_labeled_options() -> None:
@@ -44,3 +44,19 @@ def test_control_schema_can_return_only_checkboxes_or_all_fields() -> None:
     assert [item["name"] for item in control_schema(block_type, "all")] == [
         "enabled", "color", "text",
     ]
+
+
+def test_normalize_values_accepts_human_friendly_native_settings() -> None:
+    block_type = SimpleNamespace(
+        type_id="130", values={}, vars=[], settings=[
+            {"name": "items_count", "type": "select", "vars": [
+                {"val": "count3"}, {"val": "count4"}, {"val": "count5"},
+            ]},
+            {"name": "padd_top", "type": "int"},
+        ],
+    )
+
+    normalized = normalize_values(block_type, {"items_count": 4, "padd_top": "55px"})
+
+    assert normalized == {"items_count": "count4", "padd_top": "55"}
+    validate_values(block_type, normalized)

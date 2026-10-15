@@ -229,6 +229,13 @@ def register(mcp: Any, service: Service) -> list[str]:
         return await service.install_template(template_id, template_page_id,
                                               multipage=multipage, apply=apply)
 
+    @tool("tobiz_create_project", "Создать отдельный пустой проект TOBIZ для нового сайта. "
+          "Сначала используйте apply=false для предпросмотра, затем apply=true. "
+          "Возвращенный project_id передавайте в tobiz_build_site_package; проекты библиотеки "
+          "шаблонов никогда не используйте как целевые.")
+    async def tobiz_create_project(apply: bool = False) -> dict[str, Any]:
+        return await service.create_project(apply=apply)
+
     @tool("tobiz_list_pages",
           "Страницы проекта: page_id (он же v в адресе редактора), название, slug, видимость, "
           "ссылка редактора.")
@@ -655,6 +662,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                                     "Состав страницы: tobiz_list_blocks")
         block_type = await service.type_or_raise(project_id, block.type_id)
         if values:
+            values = block_domain.normalize_values(block_type, values)
             block_domain.validate_values(block_type, values)
         merged, changed = block_domain.apply_edits(block.values, values, set, replace)
         block.values = merged
@@ -827,6 +835,12 @@ def register(mcp: Any, service: Service) -> list[str]:
                                         viewports: list[str] | None = None) -> dict[str, Any]:
         if apply and service.config.read_only:
             raise errors.read_only()
+        if apply and not str(target_project_id or "").strip():
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, "Для сборки нужен отдельный целевой проект",
+                "Создайте проект клиента и передайте target_project_id",
+                raw={"code": "target_project_required"},
+            )
         allowed_seo = {"title", "dir", "seo_title", "seo_description", "seo_keywords",
                        "og_image", "personal_seo_configs", "access_control"}
         seo_values = seo or {}
@@ -835,6 +849,12 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Неизвестные SEO-поля: " + ", ".join(unknown_seo))
         source_project_id, source_page = await service.resolve_page(source_project_id, source_page_id)
+        if apply and str(target_project_id) == str(source_project_id):
+            raise errors.TobizError(
+                errors.CONFLICT, "Нельзя собирать сайт внутри проекта исходного шаблона",
+                "Укажите project_id отдельного проекта клиента",
+                raw={"code": "source_project_target_forbidden", "source_project_id": source_project_id},
+            )
         source_draft = await service.draft(source_project_id, source_page_id)
         prepared_source, template_changes, template_warnings = template_domain.prepare_template(
             source_draft, content_domain.fingerprint(source_draft))
@@ -1202,6 +1222,21 @@ def register(mcp: Any, service: Service) -> list[str]:
                                     "Передайте полный пакет из tobiz_prepare_site_package")
         brief = package["brief"]
         plan = await tobiz_plan_site(brief)
+        source_project_id = str((plan.get("template") or {}).get("project_id") or "")
+        target_project = str(target_project_id or "").strip()
+        if apply and not target_project:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, "Для сборки нужен отдельный целевой проект",
+                "Создайте новый проект TOBIZ и повторите вызов с target_project_id; "
+                "библиотека шаблонов не будет изменена",
+                raw={"code": "target_project_required", "source_project_id": source_project_id},
+            )
+        if apply and target_project == source_project_id:
+            raise errors.TobizError(
+                errors.CONFLICT, "Нельзя собирать сайт внутри проекта исходного шаблона",
+                "Укажите project_id отдельного проекта клиента",
+                raw={"code": "source_project_target_forbidden", "source_project_id": source_project_id},
+            )
         envelope = site_plan_domain.validate_package_envelope(package, plan)
         if envelope["blockers"]:
             raise errors.TobizError(
@@ -1219,9 +1254,9 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT, "Пакет сайта не готов к сборке",
                 "Исправьте blockers из preflight; страница еще не создана", raw=preflight)
-        title = str((seo or {}).get("title") or "").strip()
+        title = site_plan_domain.safe_system_title(str((seo or {}).get("title") or ""))
         result = await tobiz_build_quality_page(
-            brief=brief, target_project_id=target_project_id, title=title,
+            brief=brief, target_project_id=target_project, title=title,
             recipe=recipe, media_recipe=media_recipe, source_terms=source_terms,
             seo=seo, apply=apply, viewports=viewports, details=details,
             plan_id=plan["plan_id"])
@@ -1325,6 +1360,19 @@ def register(mcp: Any, service: Service) -> list[str]:
             selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        if apply and not str(target_project_id or "").strip():
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT, "Для сборки нужен отдельный целевой проект",
+                "Создайте проект клиента и передайте target_project_id",
+                raw={"code": "target_project_required"},
+            )
+        if apply and str(target_project_id) == str(selected["project_id"]):
+            raise errors.TobizError(
+                errors.CONFLICT, "Нельзя собирать сайт внутри проекта исходного шаблона",
+                "Укажите project_id отдельного проекта клиента",
+                raw={"code": "source_project_target_forbidden",
+                     "source_project_id": selected["project_id"]},
+            )
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
         source_passport = content_domain.passport(source_draft)
         blueprint = content_domain.compact_blueprint(

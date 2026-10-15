@@ -49,7 +49,7 @@ INSTALLED = (
      "photo_dependency": "high", "content_density": "medium", "blocks": 13, "flex_share": 0.0},
     {"id": "culinary", "title": "Кулинария и готовая еда", "project_id": "433144",
      "page_id": "1221206", "visual_system": "ecommerce", "site_kind": "local_catalog",
-     "concepts": ["food", "ecommerce", "catalog", "local"],
+     "concepts": ["food", "ecommerce", "catalog", "local", "event"],
      "strengths": ["catalog", "gallery", "products", "reviews", "contacts"],
      "photo_dependency": "high", "content_density": "medium", "blocks": 12, "flex_share": 0.0},
 )
@@ -93,6 +93,7 @@ CONCEPT_TERMS = {
     "food": ["еда", "кулинар", "продукт", "ресторан", "ферм"],
     "local": ["локаль", "рядом", "город", "адрес"],
     "education": ["курс", "обучен", "школ", "программ"],
+    "event": ["праздник", "квест", "мероприят", "вечерин", "день рожд"],
     "tourism": ["туризм", "отдых", "аренд", "глэмп", "отель"],
     "automotive": ["авто", "машин", "автомоб"],
     "technical": ["техничес", "оборудован", "систем", "инженер"],

@@ -26,6 +26,17 @@ def test_regional_drilling_prefers_long_native_construction_template():
     assert result['visual_references'][0]['id'] == 'aktive-montage'
 
 
+def test_event_brief_is_not_classified_as_construction():
+    selection, selected = design.select_native({
+        'industry': 'Квест Темно и весело',
+        'offer': 'Праздник под ключ для компании друзей',
+        'goal': 'Узнать свободное время',
+    })
+    assert 'event' in selection['brief_concepts']
+    assert 'construction' not in selection['brief_concepts']
+    assert selected['id'] == 'culinary'
+
+
 def test_medical_booking_prefers_booking_template_even_with_flex_risk():
     result = design.select({
         'industry': 'Медицинская клиника',

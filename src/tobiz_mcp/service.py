@@ -1093,6 +1093,32 @@ class Service:
 
     # --- копирование и удаление страницы ---
 
+    async def create_project(self, apply: bool = False) -> dict[str, Any]:
+        """Create an empty native TOBIZ project for a new client site."""
+        if not apply:
+            return {"dry_run": True, "will_create": "empty_native_project",
+                    "next_action": "Повторить с apply=true"}
+        if self.config.read_only:
+            raise errors.read_only()
+        before = {project.project_id for project in await self.projects(refresh=True)}
+        result = await self.client.panel_ajax("fast_make_project")
+        if not result.ok:
+            raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не создал проект",
+                                    raw=result.payload)
+        project_id = str(result.payload.get("project_id") or "")
+        if not project_id:
+            raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не вернул project_id",
+                                    raw=result.payload)
+        self._projects = None
+        projects = await self.projects(refresh=True)
+        created = [project.to_dict(self.config.lp_template, include_pages=True)
+                   for project in projects if project.project_id not in before]
+        await self.audit("tobiz_create_project", project_id,
+                         extra={"created_projects": len(created)})
+        return {"created": created, "project_id": project_id,
+                "public_url": self.config.lp_template.format(project_id=project_id),
+                "next_action": "Передать project_id в tobiz_build_site_package"}
+
     async def install_template(self, template_id: str, template_page_id: str,
                                multipage: bool = False, apply: bool = False) -> dict[str, Any]:
         """Install a free vendor template as a separate native TOBIZ project."""

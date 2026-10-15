@@ -198,6 +198,41 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     assert 'Курс математики' not in str(package['recipe'])
 
 
+def test_prepare_package_requires_only_primary_catalog_images() -> None:
+    package = site_plan.prepare_build_package(
+        {'industry': 'Праздники'},
+        {'plan_id': 'x', 'template': {}, 'content_brief': {}, 'photo_requirements': []},
+        {'recipe': {'types': [], 'slots': []}, 'photo_slots': [{
+            'block_index': 3, 'path_pattern': '/arr1/0/image', 'role': 'catalog_image',
+            'paths': ['/arr1/0/image', '/arr1/0/image2', '/arr1/0/image3'],
+        }]},
+    )
+
+    group = package['media_recipe']['groups'][0]
+    assert group['required_assets'] == 1
+    assert [asset['path'] for asset in group['assets']] == ['/arr1/0/image']
+
+
+def test_media_validation_ignores_hidden_catalog_alternates() -> None:
+    blueprint = {'photo_slots': [{
+        'block_index': 3, 'path_pattern': '/arr1/0/image', 'role': 'catalog_image',
+        'paths': ['/arr1/0/image', '/arr1/0/image2', '/arr1/0/image3'],
+    }]}
+    result = site_plan.validate_media_recipe({'plan_id': 'x'}, blueprint, {'groups': [{
+        'block_index': 3, 'path_pattern': '/arr1/0/image', 'assets': [{
+            'filename': 'event.webp', 'width': 1200, 'height': 1200,
+            'subject': 'Гости на празднике',
+        }],
+    }]})
+
+    assert result['ready_for_build'] is True
+    assert result['assigned_slots'] == 1
+
+
+def test_safe_system_title_removes_panel_forbidden_symbols() -> None:
+    assert site_plan.safe_system_title('Квест «Темно и весело»!') == 'Квест Темно и весело'
+
+
 def test_package_envelope_rejects_stale_plan_and_template():
     plan = {'plan_id': 'fresh', 'template': {'project_id': '1', 'page_id': '2'}}
     valid = {'schema_version': 1, 'package_id': 'fresh:v1', 'plan_id': 'fresh',
