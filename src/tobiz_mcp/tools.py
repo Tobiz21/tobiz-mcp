@@ -31,6 +31,7 @@ logger = log.get("tools")
 from pydantic import BeforeValidator, WithJsonSchema
 
 SCHEMA_VERSION = 1
+QUALITY_VIEWPORTS = ["desktop", "tablet", "mobile"]
 
 # Идентификаторы конструктора — строки, но LLM-клиенты естественно передают числа, и клиентская
 # валидация по JSON-схеме отсекает int у поля с типом string. Поэтому схема объявляет оба типа
@@ -1316,12 +1317,12 @@ def register(mcp: Any, service: Service) -> list[str]:
         target_composition = composition_domain.analyze(target_draft, plan["goal"])
         plan_check = site_plan_domain.compare(plan, target_draft, target_composition)
         target_report = await service.inspect_page(
-            project_id, page_id, screenshot=screenshots, viewports=["desktop", "mobile"],
+            project_id, page_id, screenshot=screenshots, viewports=QUALITY_VIEWPORTS,
             forbidden_terms=source_terms)
         target_audit = audit_domain.compact(target_report)
         reference_report = await service.inspect_page(
             selected["project_id"], selected["page_id"], screenshot=False,
-            viewports=["desktop", "mobile"])
+            viewports=QUALITY_VIEWPORTS)
         reference = design_reference_domain.compare(
             design_reference_domain.extract(
                 source_draft, audit_domain.compact(reference_report), plan["goal"]),
@@ -1456,7 +1457,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             source_terms=source_terms,
             seo=seo,
             apply=apply,
-            viewports=viewports or ["desktop", "mobile"],
+            viewports=viewports or QUALITY_VIEWPORTS,
         )
         if not details:
             result.pop("passport", None)
@@ -1496,11 +1497,11 @@ def register(mcp: Any, service: Service) -> list[str]:
             plan_check = site_plan_domain.compare(site_plan, target_draft, target_composition)
             target_report = await service.inspect_page(
                 target_project, target_page_id, screenshot=True,
-                viewports=viewports or ["desktop", "mobile"], forbidden_terms=source_terms)
+                viewports=viewports or QUALITY_VIEWPORTS, forbidden_terms=source_terms)
             target_audit = audit_domain.compact(target_report)
             reference_report = await service.inspect_page(
                 selected["project_id"], selected["page_id"], screenshot=False,
-                viewports=["desktop", "mobile"])
+                viewports=QUALITY_VIEWPORTS)
             reference = design_reference_domain.compare(
                 design_reference_domain.extract(
                     source_draft, audit_domain.compact(reference_report), site_plan["goal"]),
@@ -1554,7 +1555,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "Сохраните или отмените их перед автоматическим улучшением",
             )
         initial_report = await service.inspect_page(
-            project_id, page_id, screenshot=True, viewports=viewports or ["desktop", "mobile"],
+            project_id, page_id, screenshot=True, viewports=viewports or QUALITY_VIEWPORTS,
             forbidden_terms=source_terms)
         initial = audit_domain.compact(initial_report)
         candidate, planned, preparation_warnings = template_domain.prepare_template(
@@ -1605,7 +1606,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             service.drafts.put(improved)
             save = await service.save_page(project_id, page_id)
             report = await service.inspect_page(
-                project_id, page_id, screenshot=True, viewports=viewports or ["desktop", "mobile"],
+                project_id, page_id, screenshot=True, viewports=viewports or QUALITY_VIEWPORTS,
                 forbidden_terms=source_terms)
             after = audit_domain.compact(report)
             before_score = current["quality_score"]["overall"]
@@ -1654,7 +1655,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(
                 errors.CONFLICT, "В MCP-черновике есть несохраненные изменения",
                 "Сохраните или отмените их перед ремонтом верстки")
-        modes = viewports or ["desktop", "mobile"]
+        modes = viewports or QUALITY_VIEWPORTS
         before_report = await service.inspect_page(
             project_id, page_id, screenshot=True, viewports=modes,
             forbidden_terms=source_terms)
@@ -1728,7 +1729,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                 errors.CONFLICT, "В MCP-черновике есть несохраненные изменения",
                 "Сохраните или отмените их перед комплексным улучшением дизайна")
         before_report = await service.inspect_page(
-            project_id, page_id, screenshot=True, viewports=["desktop", "mobile"],
+            project_id, page_id, screenshot=True, viewports=QUALITY_VIEWPORTS,
             forbidden_terms=source_terms)
         before = audit_domain.compact(before_report)
         types = await service.block_types(project_id)
@@ -1758,7 +1759,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                     "stopped_reason": "editor_not_safe", "editor_roundtrip": roundtrip}
         save = await service.save_page(project_id, page_id)
         after_report = await service.inspect_page(
-            project_id, page_id, screenshot=True, viewports=["desktop", "mobile"],
+            project_id, page_id, screenshot=True, viewports=QUALITY_VIEWPORTS,
             forbidden_terms=source_terms)
         after = audit_domain.compact(after_report)
         design_delta = refinement_domain.regression(before, after)
@@ -1818,10 +1819,10 @@ def register(mcp: Any, service: Service) -> list[str]:
         target_draft = await service.draft(target_project_id, target_page_id)
         reference_report = await service.inspect_page(
             reference_project_id, reference_page_id, screenshot=screenshots,
-            viewports=["desktop", "mobile"])
+            viewports=QUALITY_VIEWPORTS)
         target_report = await service.inspect_page(
             target_project_id, target_page_id, screenshot=screenshots,
-            viewports=["desktop", "mobile"])
+            viewports=QUALITY_VIEWPORTS)
         reference_audit = audit_domain.compact(reference_report)
         target_audit = audit_domain.compact(target_report)
         reference_recipe = design_reference_domain.extract(reference_draft, reference_audit, goal)
@@ -1853,7 +1854,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         draft = await service.draft(project_id, page_id)
         report = await service.inspect_page(
             project_id, page_id, screenshot=screenshots,
-            viewports=["desktop", "mobile"], forbidden_terms=source_terms)
+            viewports=QUALITY_VIEWPORTS, forbidden_terms=source_terms)
         audit = audit_domain.compact(report)
         composition = composition_domain.analyze(draft, goal)
         reference_comparison = None
@@ -1866,7 +1867,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             reference_draft = await service.draft(reference_project_id, reference_page_id)
             reference_report = await service.inspect_page(
                 reference_project_id, reference_page_id, screenshot=False,
-                viewports=["desktop", "mobile"])
+                viewports=QUALITY_VIEWPORTS)
             reference_recipe = design_reference_domain.extract(
                 reference_draft, audit_domain.compact(reference_report), goal)
             target_recipe = design_reference_domain.extract(draft, audit, goal)
@@ -1888,7 +1889,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                                  screenshots: bool = True) -> dict[str, Any]:
         project_id, _ = await service.resolve_page(project_id, page_id)
         report = await service.inspect_page(
-            project_id, page_id, screenshot=screenshots, viewports=["desktop", "mobile"])
+            project_id, page_id, screenshot=screenshots, viewports=QUALITY_VIEWPORTS)
         return image_audit_domain.summarize(report)
 
     @tool("tobiz_delete_page",

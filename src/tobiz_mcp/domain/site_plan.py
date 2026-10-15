@@ -18,6 +18,12 @@ PHOTO_RULES = {
     "content_image": {"orientation": "match native slot", "ratio": "preserve source proportions", "safe_zone": "keep the subject inside the visible crop"},
 }
 
+SHOT_ROLE_BY_SECTION = {
+    "hero": "hero", "process": "process_or_game", "contact": "location",
+    "proof": "people_or_event", "expert": "people", "benefits": "details",
+    "offer": "interior", "catalog": "details", "programs": "process_or_game",
+}
+
 
 def safe_system_title(value: str, fallback: str = "Новая страница") -> str:
     """Return a TOBIZ panel-safe title without changing visible or SEO copy."""
@@ -141,8 +147,15 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
     photos = []
     for item in blueprint.get("photo_slots") or []:
         role = item.get("role") or "content_image"
+        block_index = int(item.get("block_index") or 0)
+        section_role = next((section["role"] for section in story["sections"]
+                             if int(section["position"]) == block_index), "content")
+        shot_role = SHOT_ROLE_BY_SECTION.get(
+            section_role, "details" if role == "gallery_image" else "interior")
         photos.append({**item, **PHOTO_RULES.get(role, PHOTO_RULES["content_image"]),
-                       "brief": "Use a realistic, topic-specific photo; do not use generic stock-like imagery."})
+                       "section_role": section_role, "shot_role": shot_role,
+                       "brief": (f"Prepare a realistic {shot_role} photo for the {section_role} section; "
+                                 "do not use generic stock-like imagery.")})
     sections = []
     for section in story["sections"]:
         index = int(section["position"])
@@ -174,7 +187,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
         },
         "acceptance": [
             "all meaningful recipe slots replaced", "no source-theme terms remain",
-            "all photo requirements reviewed on desktop and mobile",
+            "all photo requirements reviewed on desktop, tablet and mobile",
             "native reference structure preserved", "editor roundtrip is safe",
             "tobiz_release_design_gate returns ready",
         ],

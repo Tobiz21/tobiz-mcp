@@ -23,6 +23,7 @@ function browserPath(explicit) {
 
 const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
+  tablet: { width: 800, height: 1024 },
   mobile: { width: 390, height: 844 },
 };
 
@@ -102,6 +103,16 @@ async function inspect(page, forbiddenTerms = []) {
         accessibilityIssues };
     });
     const popups = [...document.querySelectorAll('[class*=popup], [class*=modal], [role=dialog]')].map(el => ({ ...ref(el), visible: visible(el) })).slice(0, 100);
+    const accordions = [...document.querySelectorAll(
+      '[aria-expanded],[data-toggle="collapse"],[data-bs-toggle="collapse"],.accordion-button')]
+      .filter(visible).map(control => {
+        const selector = control.getAttribute('aria-controls') ? `#${control.getAttribute('aria-controls')}` :
+          (control.getAttribute('data-target') || control.getAttribute('data-bs-target') || control.getAttribute('href'));
+        let target = null;
+        try { target = selector?.startsWith('#') ? document.querySelector(selector) : null; } catch (_) {}
+        return { control: ref(control), expanded: control.getAttribute('aria-expanded'), selector: selector || null,
+          targetFound: !!target };
+      });
     const allVisible = [...document.body.querySelectorAll('*')].filter(visible);
     const overflow = allVisible.filter(el => { const r = el.getBoundingClientRect(); return r.right > innerWidth + 2 || r.left < -2; }).slice(0, 100).map(ref);
     const images = [...document.images].map(img => { const r = img.getBoundingClientRect(); const s = getComputedStyle(img);
@@ -256,14 +267,35 @@ async function inspect(page, forbiddenTerms = []) {
     });
     if (uncoveredBackgroundText.length) visualIssues.push({ code: 'text_over_image_without_scrim',
       count: uncoveredBackgroundText.length, items: uncoveredBackgroundText.slice(0, 20).map(item => ref(item.el)) });
+    const firstHero = visibleBlocks.find(item => item.el.querySelector('h1') &&
+      getComputedStyle(item.el).backgroundImage !== 'none');
+    if (firstHero) {
+      const overlay = firstHero.el.querySelector(':scope > .back_dark,[class*=overlay],[class*=substrate]');
+      if (overlay && visible(overlay)) {
+        const color = rgb(getComputedStyle(overlay).backgroundColor);
+        const opacity = Number(getComputedStyle(overlay).opacity || 1);
+        const darkness = (color?.[3] ?? 0) * opacity;
+        if (darkness >= .78) visualIssues.push({ code: 'hero_background_too_dark',
+          block: firstHero.el.id, darkness: Number(darkness.toFixed(2)) });
+      }
+    }
+    const intentionallyCollapsed = el => !!el.closest(
+      '[aria-expanded="false"],[hidden],.collapsed,.collapse:not(.show),.accordion-content,.spoiler-content,' +
+      '[class*=gallery] [class*=overlay],[class*=gallery] [class*=caption]');
     const clippedContent = allVisible.filter(el => {
       if (!el.innerText?.trim() || ['BODY', 'HTML'].includes(el.tagName)) return false;
+      if (intentionallyCollapsed(el)) return false;
       const s = getComputedStyle(el);
       const clips = ['hidden', 'clip'].includes(s.overflow) || ['hidden', 'clip'].includes(s.overflowY);
       return clips && el.children.length < 8 && el.scrollHeight > el.clientHeight + 4;
     });
     if (clippedContent.length) visualIssues.push({ code: 'content_clipped', count: clippedContent.length,
       items: clippedContent.slice(0, 20).map(ref) });
+    const longGalleryCaptions = [...document.querySelectorAll(
+      '[class*=gallery] [class*=caption],[class*=gallery] [class*=overlay]')]
+      .filter(el => (el.innerText || '').trim().length > 140);
+    if (longGalleryCaptions.length) visualIssues.push({ code: 'gallery_caption_too_long',
+      count: longGalleryCaptions.length, items: longGalleryCaptions.slice(0, 20).map(ref) });
     const sectionMetrics = visibleBlocks.map(item => {
       const inner = item.el.querySelector(':scope > .section_inner');
       const innerRect = inner?.getBoundingClientRect();
@@ -290,9 +322,12 @@ async function inspect(page, forbiddenTerms = []) {
     if (buttonRadii.length > 3) visualIssues.push({ code: 'button_radii_inconsistent', items: buttonRadii });
     if (headingAlignments.length > 2) visualIssues.push({ code: 'heading_alignment_inconsistent', items: headingAlignments });
     const usabilityIssues = [];
-    if (innerWidth <= 600) {
+    const brokenAccordions = accordions.filter(item => item.selector && !item.targetFound);
+    if (brokenAccordions.length) usabilityIssues.push({ code: 'accordion_control_broken',
+      count: brokenAccordions.length, items: brokenAccordions.slice(0, 20) });
+    if (innerWidth <= 820) {
       const smallTargets = [...document.querySelectorAll(buttonSelector)].filter(visible).filter(el => {
-        const r = el.getBoundingClientRect(); return r.width < 40 || r.height < 40;
+        const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44;
       });
       if (smallTargets.length) usabilityIssues.push({ code: 'tap_target_too_small', count: smallTargets.length,
         items: smallTargets.slice(0, 20).map(ref) });
@@ -335,7 +370,7 @@ async function inspect(page, forbiddenTerms = []) {
       computedStyles: { body: sample('body'), h1: sample('h1'), h2: sample('h2'), paragraph: sample('p'),
         link: sample('a'), button: sample('a.btn1, a.btn2, a.btn3, a.btn4, a.btn5, button, input[type=submit]'),
         input: sample('input:not([type=hidden]), textarea') },
-      interactions: { controls: links.length, broken: badButtons, forms, popups, usabilityIssues },
+      interactions: { controls: links.length, broken: badButtons, forms, popups, accordions, usabilityIssues },
       layout: { horizontalOverflow: overflow, blockIssues, visualIssues, textContrast, buttonSurfaceContrast,
         blocks: visibleBlocks.map(item => ({ ...ref(item.el), top: Math.round(item.rect.top),
           bottom: Math.round(item.rect.bottom) })),
@@ -359,7 +394,7 @@ async function inspect(page, forbiddenTerms = []) {
     if (request.screenshot) fs.mkdirSync(request.output_dir, { recursive: true });
     browser = await chromium.launch({ executablePath, headless: true, args: ['--disable-dev-shm-usage'] });
     const result = { ok: true, url: request.url, viewports: {}, consoleErrors: [], pageErrors: [] };
-    for (const name of request.viewports || ['desktop', 'mobile']) {
+    for (const name of request.viewports || ['desktop', 'tablet', 'mobile']) {
       if (!VIEWPORTS[name]) continue;
       const context = await browser.newContext({ viewport: VIEWPORTS[name], ignoreHTTPSErrors: true });
       const page = await context.newPage();
@@ -368,6 +403,19 @@ async function inspect(page, forbiddenTerms = []) {
       await page.goto(request.url, { waitUntil: 'domcontentloaded', timeout: request.timeout_ms || 45000 });
       await page.waitForLoadState('load', { timeout: Math.min(request.timeout_ms || 45000, 15000) }).catch(() => {});
       await page.evaluate(() => document.fonts?.ready).catch(() => {});
+      await page.evaluate(async () => {
+        window.scrollTo(0, document.body.scrollHeight);
+        await new Promise(resolve => setTimeout(resolve, 350));
+        window.scrollTo(0, 0);
+        const pending = [...document.images].filter(img => !img.complete);
+        await Promise.race([
+          Promise.all(pending.map(img => new Promise(resolve => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          }))),
+          new Promise(resolve => setTimeout(resolve, 1500)),
+        ]);
+      }).catch(() => {});
       const report = await inspect(page, request.forbidden_terms || []);
       if (request.screenshot) {
         const file = path.join(request.output_dir, `${name}.png`);

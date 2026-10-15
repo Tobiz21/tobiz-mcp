@@ -102,7 +102,8 @@ class RenderBridge:
         if not self.inspector_script.exists() or shutil.which(self.config.node_bin) is None:
             raise errors.TobizError(errors.RENDER_FAILED, "Браузерный инспектор недоступен")
         payload = json.dumps({
-            "url": url, "output_dir": str(output_dir), "viewports": viewports or ["desktop", "mobile"],
+            "url": url, "output_dir": str(output_dir),
+            "viewports": viewports or ["desktop", "tablet", "mobile"],
             "screenshot": screenshot, "timeout_ms": self.config.http_timeout * 1000,
             "forbidden_terms": forbidden_terms or [],
         }, ensure_ascii=False)

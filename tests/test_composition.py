@@ -52,3 +52,73 @@ def test_composition_ignores_deleted_blocks_and_custom_code_payloads():
     assert len(result["sections"]) == 1
     assert "proof" in result["missing_roles"]
     assert "contact" in result["missing_roles"]
+
+
+def test_native_header_before_hero_is_not_a_weak_first_screen():
+    draft = Draft("1", "2", blocks={
+        "header": DraftBlock("header", "105", {
+            "logo": "logo.png", "menu1": [{"title": "Программы"}], "fixed": 1,
+        }),
+        "hero": DraftBlock("hero", "1154", {
+            "title": "Праздник под ключ для вашей компании",
+            "subtitle": "Квест, музыка и ведущий в одном сценарии",
+        }),
+    }, order=["header", "hero"])
+
+    result = analyze(draft)
+
+    assert result["sections"][0]["role"] == "header"
+    assert result["sections"][0]["fixed"] is True
+    assert result["sections"][1]["role"] == "hero"
+    assert "weak_first_screen" not in {item["code"] for item in result["issues"]}
+
+
+def test_composition_detects_editorial_copy_and_adjacent_photo_backgrounds():
+    draft = Draft("1", "2", blocks={
+        "hero": DraftBlock("hero", "1154", {
+            "title": "Праздник под ключ", "bg_image": "hero.jpg",
+        }),
+        "gallery": DraftBlock("gallery", "100", {
+            "title": "10 новых кадров в единой стилистике",
+            "background_image": "gallery.jpg",
+        }),
+    }, order=["hero", "gallery"])
+
+    result = analyze(draft)
+    codes = {item["code"] for item in result["issues"]}
+
+    assert "editorial_copy" in codes
+    assert "adjacent_photo_backgrounds" in codes
+
+
+def test_faq_is_a_valid_neutral_separator_between_photo_backgrounds():
+    draft = Draft("1", "2", blocks={
+        "hero": DraftBlock("hero", "1154", {"title": "Главная услуга", "bg_image": "a.jpg"}),
+        "faq": DraftBlock("faq", "100", {"title": "Часто задаваемые вопросы и ответы"}),
+        "place": DraftBlock("place", "100", {"title": "Как нас найти", "bg_image": "b.jpg"}),
+    }, order=["hero", "faq", "place"])
+
+    result = analyze(draft)
+
+    assert "adjacent_photo_backgrounds" not in {item["code"] for item in result["issues"]}
+
+
+def test_landing_story_accepts_header_hero_offer_gallery_process_cta_faq_location_footer():
+    draft = Draft("1", "2", blocks={
+        "h": DraftBlock("h", "105", {"logo": "logo.png", "menu1": []}),
+        "hero": DraftBlock("hero", "1", {"title": "Праздник под ключ", "bg_image": "hero.jpg"}),
+        "offer": DraftBlock("offer", "2", {"title": "Что вы получите: квест и ведущего"}),
+        "gallery": DraftBlock("gallery", "3", {"title": "Атмосфера праздника", "gallery": ["1.jpg"]}),
+        "process": DraftBlock("process", "4", {"title": "Как проходит мероприятие: четыре этапа"}),
+        "cta": DraftBlock("cta", "5", {"title": "Оставьте заявку", "form1": [{"type": "phone"}]}),
+        "faq": DraftBlock("faq", "6", {"title": "Часто задаваемые вопросы и ответы"}),
+        "location": DraftBlock("location", "7", {"title": "Как нас найти: адрес и карта", "bg_image": "place.jpg"}),
+        "footer": DraftBlock("footer", "8", {"title": "Контакты", "phone": "+7 (900) 000-00-00"}),
+    }, order=["h", "hero", "offer", "gallery", "process", "cta", "faq", "location", "footer"])
+
+    result = analyze(draft)
+    codes = {item["code"] for item in result["issues"]}
+
+    assert result["sections"][0]["role"] == "header"
+    assert "weak_first_screen" not in codes
+    assert "adjacent_photo_backgrounds" not in codes

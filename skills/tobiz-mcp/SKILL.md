@@ -40,7 +40,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 6. Правки: `tobiz_add_block` / `tobiz_update_block` / `tobiz_delete_block` / `tobiz_move_block`.
    Всё это живёт **в черновике** в памяти сервера.
 7. Записать на сайт: `tobiz_save_page` — рендерит HTML блоков и отправляет `SaveBlocks`.
-8. Проверить результат по **публичной вёрстке**: `tobiz_audit_page` сразу делает desktop/mobile
+8. Проверить результат по **публичной вёрстке**: `tobiz_audit_page` сразу делает desktop/tablet/mobile
    снимки, читает computed styles и проверяет формы, кнопки, попапы, изображения и переполнение.
 
 ## Безопасный протокол сохранения
@@ -306,7 +306,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
   Выдавай ссылку клиенту только при `gate.verdict=ready`. При `review` исправь список
   `improvements`, при `save_blocked` сначала устрани все `blockers`; не обходи гейт вручную.
 * **Проверить фотографии**: перед дизайн-гейтом вызови `tobiz_audit_images` и просмотри
-  desktop/mobile-снимки вместе с `semantic_review`. Исправь растянутые, чрезмерно обрезанные и
+  desktop/tablet/mobile-снимки вместе с `semantic_review`. Исправь растянутые, чрезмерно обрезанные и
   повторяющиеся изображения штатными полями блока. Не считай фото подходящим только по имени
   файла: оно должно соответствовать `nearby_text` и оставлять безопасную зону для текста.
 

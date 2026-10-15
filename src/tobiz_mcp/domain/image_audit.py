@@ -9,7 +9,24 @@ IMAGE_CODES = {
     "broken_images", "missing_alt", "card_image_ratios_inconsistent",
     "image_aspect_distorted", "image_low_resolution", "image_crop_extreme",
     "image_reused_across_sections", "text_over_image_without_scrim",
+    "image_semantic_mismatch", "gallery_scene_repetition",
 }
+
+ROLE_TERMS = {
+    "interior": ("интерьер", "зал", "комнат", "пространств", "площадк"),
+    "process": ("процесс", "игра", "квест", "как проходит", "сценари", "задани"),
+    "people": ("гост", "команд", "участник", "дет", "друз", "ведущ"),
+    "event": ("праздник", "день рождения", "вечерин", "мероприят"),
+    "location": ("адрес", "как добраться", "локац", "карта", "находимся"),
+    "details": ("детал", "реквизит", "декор", "атмосфер"),
+}
+
+
+def _semantic_role(value: str) -> str:
+    text = str(value or "").lower().replace("ё", "е")
+    scores = {role: sum(term in text for term in terms) for role, terms in ROLE_TERMS.items()}
+    role, score = max(scores.items(), key=lambda item: item[1])
+    return role if score else "unknown"
 
 
 def summarize(report: dict[str, Any]) -> dict[str, Any]:
@@ -31,6 +48,15 @@ def summarize(report: dict[str, Any]) -> dict[str, Any]:
                 "width": item.get("renderedWidth"), "height": item.get("renderedHeight"),
                 "object_fit": item.get("objectFit"),
             }
+            expected = _semantic_role(str(item.get("nearbyText") or ""))
+            observed = _semantic_role(" ".join((str(item.get("alt") or ""),
+                                                 str(item.get("src") or ""))))
+            record["expected_role"] = expected
+            record["observed_role"] = observed
+            if expected != "unknown" and observed != "unknown" and expected != observed:
+                issues.append({"viewport": viewport, "code": "image_semantic_mismatch",
+                               "block": item.get("block"), "src": item.get("src"),
+                               "expected_role": expected, "observed_role": observed})
         for item in (data.get("layout") or {}).get("visualIssues") or []:
             if item.get("code") in IMAGE_CODES:
                 issues.append({"viewport": viewport, **item})
@@ -52,6 +78,7 @@ def summarize(report: dict[str, Any]) -> dict[str, Any]:
         "screenshots": screenshots,
         "semantic_review": [
             {"block_id": item["block_id"], "src": item["src"], "nearby_text": item["nearby_text"],
+             "expected_role": item.get("expected_role"), "observed_role": item.get("observed_role"),
              "question": "Соответствует ли фотография смыслу секции и оставляет ли безопасную зону под текст?"}
             for item in inventory.values()
         ],

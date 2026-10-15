@@ -30,6 +30,7 @@ GOALS = {
 }
 
 LABELS = {
+    "header": "шапка и навигация",
     "hero": "первый экран", "offer": "предложение", "catalog": "каталог",
     "programs": "программы или тарифы", "problem": "проблема клиента",
     "benefits": "выгоды и результат", "process": "процесс", "expert": "экспертность",
@@ -37,6 +38,13 @@ LABELS = {
     "delivery": "доставка и оплата", "cta": "призыв к действию", "contact": "контакты",
     "content": "содержательный блок",
 }
+
+HEADER_TYPES = {"105"}
+EDITORIAL_TERMS = (
+    "новых кадров", "изображения в единой стилистике", "визуальная концепция",
+    "здесь мы показываем", "фотографии сгенерированы", "фото сгенерированы",
+    "клиент сам заменит", "замените фотографию", "место для фотографии",
+)
 
 
 def _plain(value: str) -> str:
@@ -68,6 +76,32 @@ def _has_phone(text: str) -> bool:
     return bool(re.search(r"(?:\+7|8)[\s(\-]*\d{3}", text))
 
 
+def _is_header(block: Any) -> bool:
+    if str(block.type_id) in HEADER_TYPES:
+        return True
+    keys = {str(key).lower() for key in block.values}
+    return bool(keys & {"menu1", "menu", "logo"}) and bool(
+        keys & {"phones", "phone", "fixed", "menu1"})
+
+
+def _background_image(values: Any, key: str = "") -> bool:
+    if isinstance(values, dict):
+        return any(_background_image(value, child_key) for child_key, value in values.items())
+    if isinstance(values, list):
+        return any(_background_image(value, key) for value in values)
+    return (isinstance(values, str) and bool(values.strip())
+            and bool(re.search(r"(?:bg|back|background).*image|background|bg_image", key, re.I)))
+
+
+def _background_color(values: dict[str, Any]) -> str:
+    for key, value in values.items():
+        if re.search(r"(?:bg|back|background).*color|^bg$", str(key), re.I):
+            color = str(value or "").strip().lower()
+            if color:
+                return color
+    return ""
+
+
 def _classify(text: str, *, position: int, has_form: bool, has_phone: bool) -> tuple[str, list[str]]:
     normalized = text.lower().replace("ё", "е")
     scores = {role: sum(1 for term in terms if term in normalized)
@@ -87,6 +121,7 @@ def analyze(draft, goal: str = "lead_generation") -> dict[str, Any]:
     if goal not in GOALS:
         raise ValueError(f"Unsupported composition goal: {goal}")
     sections = []
+    semantic_position = 0
     for position, block_id in enumerate(draft.order):
         block = draft.blocks[block_id]
         if block.deleted:
@@ -95,11 +130,21 @@ def analyze(draft, goal: str = "lead_generation") -> dict[str, Any]:
         text = " ".join(parts)
         form = _has_form(block.values)
         phone = _has_phone(text)
-        role, signals = _classify(text, position=len(sections), has_form=form, has_phone=phone)
+        header = _is_header(block)
+        if header:
+            role, signals = "header", []
+        else:
+            role, signals = _classify(text, position=semantic_position,
+                                      has_form=form, has_phone=phone)
+            semantic_position += 1
         sections.append({
             "position": len(sections), "block_id": str(block_id), "type_id": str(block.type_id),
             "role": role, "label": LABELS[role], "signals": signals[:4],
             "text_chars": len(text), "has_form": form, "has_phone": phone,
+            "has_background_image": _background_image(block.values),
+            "background_color": _background_color(block.values),
+            **({"fixed": bool(block.values.get("fixed") or block.values.get("fix_block"))}
+               if header else {}),
         })
 
     required = GOALS[goal]
@@ -122,10 +167,34 @@ def analyze(draft, goal: str = "lead_generation") -> dict[str, Any]:
     if not sections:
         issues.append({"code": "empty_page", "priority": "must_fix",
                        "action": "Добавить штатные блоки TOBIZ по выбранной структуре."})
-    if sections and sections[0]["role"] != "hero":
+    first_meaningful = next((section for section in sections if section["role"] != "header"), None)
+    if first_meaningful and first_meaningful["role"] != "hero":
         issues.append({"code": "weak_first_screen", "priority": "must_fix",
-                       "block_id": sections[0]["block_id"],
+                       "block_id": first_meaningful["block_id"],
                        "action": "На первом экране ясно назвать предложение, аудиторию и следующее действие."})
+    editorial = []
+    for section in sections:
+        block = draft.blocks[section["block_id"]]
+        text = " ".join(_text_values(block.values)).lower().replace("ё", "е")
+        matches = [term for term in EDITORIAL_TERMS if term in text]
+        if matches:
+            editorial.append({"block_id": section["block_id"], "terms": matches})
+    if editorial:
+        issues.append({"code": "editorial_copy", "priority": "improve", "items": editorial,
+                       "action": "Заменить служебный текст на смысл для посетителя: атмосферу, сценарий, выгоду или результат."})
+    for previous, current in zip(sections, sections[1:]):
+        if (previous["has_background_image"] and current["has_background_image"]
+                and previous["role"] != "faq" and current["role"] != "faq"):
+            issues.append({"code": "adjacent_photo_backgrounds", "priority": "improve",
+                           "block_ids": [previous["block_id"], current["block_id"]],
+                           "action": "Разделить соседние фотофоны спокойным штатным блоком с однотонным фоном."})
+    colored = [section for section in sections if section["background_color"]]
+    if len(colored) >= 4:
+        transitions = sum(left["background_color"] != right["background_color"]
+                          for left, right in zip(colored, colored[1:]))
+        if transitions >= 3 and len({item["background_color"] for item in colored}) >= 4:
+            issues.append({"code": "section_color_striping", "priority": "improve",
+                           "action": "Свести фоновые цвета к ритму из основного, нейтрального и одного акцентного фона."})
     for role in missing:
         priority = "must_fix" if role in {"hero", "offer", "programs", "catalog", "cta", "contact"} else "improve"
         issues.append({"code": f"missing_{role}_section", "priority": priority,
@@ -135,7 +204,7 @@ def analyze(draft, goal: str = "lead_generation") -> dict[str, Any]:
         issues.append({"code": "story_order_inconsistent", "priority": "improve",
                        "action": "Переставить существующие блоки по рекомендуемой смысловой последовательности."})
     short_blocks = [section["block_id"] for section in sections
-                    if section["role"] not in {"hero", "cta", "contact"}
+                    if section["role"] not in {"header", "hero", "cta", "contact"}
                     and section["text_chars"] < 80]
     if short_blocks:
         issues.append({"code": "thin_sections", "priority": "improve",

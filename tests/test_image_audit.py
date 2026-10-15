@@ -34,3 +34,18 @@ def test_mechanical_image_warning_requires_review():
     result = summarize(report([{"code": "image_crop_extreme", "count": 1}]))
     assert result["verdict"] == "review"
     assert result["score"] == 9.2
+
+
+def test_semantic_image_mismatch_requires_review():
+    data = report()
+    image = data['viewports']['desktop']['media']['imageItems'][0]
+    image['src'] = 'interior-room.jpg'
+    image['alt'] = 'Интерьер игровой комнаты'
+    image['nearbyText'] = 'Как проходит квест: задания, сценарий и командная игра'
+
+    result = summarize(data)
+
+    assert result['verdict'] == 'review'
+    assert 'image_semantic_mismatch' in result['issue_codes']
+    assert result['semantic_review'][0]['expected_role'] == 'process'
+    assert result['semantic_review'][0]['observed_role'] == 'interior'

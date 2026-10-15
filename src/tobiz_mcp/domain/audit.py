@@ -9,12 +9,12 @@ TECHNICAL = {
 CONTENT = {
     "source_content_leftover", "missing_primary_heading", "multiple_primary_headings",
     "thin_page_content", "duplicate_headings", "missing_contact_signal", "missing_alt",
-    "heading_level_skipped", "missing_primary_action",
+    "heading_level_skipped", "missing_primary_action", "editorial_copy",
 }
 USABILITY = {
     "form_contrast", "lead_form_structure", "missing_anchor", "no_action",
     "broken_interaction", "card_button_hidden_initially", "inactive_optional_link",
-    "field_missing_accessible_label", "tap_target_too_small",
+    "field_missing_accessible_label", "tap_target_too_small", "accordion_control_broken",
 }
 
 CRITICAL_VISUAL = {"text_over_image_without_scrim"}
@@ -44,6 +44,13 @@ FIXES = {
     "image_crop_extreme": "Выбрать кадр подходящей ориентации или ослабить штатное кадрирование.",
     "image_reused_across_sections": "Заменить повторяющееся фото в одной из смысловых секций.",
     "text_over_image_without_scrim": "Включить штатное затемнение фонового фото для читаемости текста.",
+    "image_semantic_mismatch": "Заменить фото на сюжет, соответствующий ближайшему тексту и роли секции.",
+    "hero_background_too_dark": "Ослабить затемнение первого экрана, чтобы объект бизнеса читался.",
+    "gallery_caption_too_long": "Сократить подпись галереи до одной короткой мысли.",
+    "accordion_control_broken": "Привязать вопрос FAQ к существующему штатному ответу.",
+    "adjacent_photo_backgrounds": "Разделить два фотофона спокойным штатным блоком с однотонным фоном.",
+    "section_color_striping": "Сократить число случайно чередующихся фоновых цветов.",
+    "editorial_copy": "Заменить служебный текст для дизайнера на клиентскую пользу и атмосферу.",
     "content_clipped": "Увеличить высоту или сократить содержимое штатными настройками блока.",
     "cards_not_stacked_mobile": "Включить штатное мобильное складывание карточек в одну колонку.",
     "container_widths_inconsistent": "Привести случайные ширины контейнеров к основной сетке страницы.",
@@ -51,7 +58,7 @@ FIXES = {
     "button_radii_inconsistent": "Унифицировать радиусы кнопок в штатных настройках блоков.",
     "heading_alignment_inconsistent": "Согласовать выравнивание заголовков с композицией страницы.",
     "field_missing_accessible_label": "Добавить полю понятную подпись или placeholder.",
-    "tap_target_too_small": "Увеличить мобильную кнопку минимум до 40x40px.",
+    "tap_target_too_small": "Увеличить мобильную кнопку минимум до 44x44px.",
     "heading_level_skipped": "Исправить последовательность уровней H1-H6.",
     "missing_primary_action": "Добавить понятное основное действие штатной кнопкой TOBIZ.",
 }

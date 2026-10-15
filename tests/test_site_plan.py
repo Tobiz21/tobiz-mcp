@@ -23,6 +23,7 @@ def test_plan_is_deterministic_and_uses_native_slots():
     assert first['goal'] == 'education'
     assert first['structure_locked'] is True
     assert first['photo_requirements'][0]['orientation'] == 'wide'
+    assert first['photo_requirements'][0]['shot_role'] == 'hero'
     assert first['content_brief']['plan_id'] == first['plan_id']
     assert first['content_brief']['ready_for_copywriting'] is False
     assert first['content_brief']['slots'][0]['field_role'] == 'section_title'
