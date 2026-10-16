@@ -66,6 +66,25 @@ def test_template_registration_requires_visual_and_technical_quality():
     assert ready["ready"] is True
 
 
+def test_template_candidate_screening_is_conservative(monkeypatch):
+    monkeypatch.setattr(design.composition, "analyze", lambda draft, goal: {
+        "goal": goal, "score": 8 if goal == "lead_generation" else 6,
+    })
+    draft = Draft(project_id="1", page_id="2")
+    draft.blocks = {str(index): DraftBlock(str(index), "101", {}) for index in range(5)}
+    result = design.assess_template_candidate(
+        draft, {"editor_safe": True}, title="Хорошая основа")
+    assert result["eligible"] is True
+    assert result["best_goal"] == "lead_generation"
+    for index in range(3):
+        draft.blocks[f"flex-{index}"] = DraftBlock(f"flex-{index}", "1600", {})
+    blocked = design.assess_template_candidate(draft, {"editor_safe": False})
+    assert blocked["eligible"] is False
+    assert {item["code"] for item in blocked["blockers"]} >= {
+        "editor_roundtrip_unsafe", "flex_share_above_30_percent",
+    }
+
+
 def test_regional_drilling_prefers_long_native_construction_template():
     result = design.select({
         'industry': 'Бурение скважин в Чувашии',
@@ -159,7 +178,7 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_copy_native_block', 'tobiz_validate_design_library',
             'tobiz_record_design_feedback', 'tobiz_list_design_feedback',
             'tobiz_design_lessons', 'tobiz_refresh_design_passport',
-            'tobiz_register_design_template'} <= set(names)
+            'tobiz_register_design_template', 'tobiz_discover_design_candidates'} <= set(names)
 
 
 def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():

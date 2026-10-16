@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import composition
+
 
 INSTALLED = (
     {"id": "modular-homes", "title": "Модульные и каркасные дома", "project_id": "433135",
@@ -156,6 +158,32 @@ def template_registration_gate(audit: dict[str, Any], composition: dict[str, Any
         "editor_safe": bool(roundtrip.get("editor_safe")),
         "visual_review": {"approved": bool(visual_review_approved),
                           "notes": str(visual_review_notes).strip()},
+    }
+
+
+def assess_template_candidate(draft: Any, roundtrip: dict[str, Any],
+                              *, title: str = "") -> dict[str, Any]:
+    """Fast structural screening before the expensive visual registration audit."""
+    visible = [block for block in draft.blocks.values() if not block.deleted]
+    flex_count = sum(str(block.type_id) == "1600" for block in visible)
+    flex_share = round(flex_count / max(len(visible), 1), 3)
+    compositions = [composition.analyze(draft, goal) for goal in composition.GOALS]
+    best = max(compositions, key=lambda item: float(item.get("score") or 0))
+    blockers = []
+    if len(visible) < 5:
+        blockers.append({"code": "too_few_blocks", "actual": len(visible), "minimum": 5})
+    if flex_share > .3:
+        blockers.append({"code": "flex_share_above_30_percent", "actual": flex_share})
+    if not roundtrip.get("editor_safe"):
+        blockers.append({"code": "editor_roundtrip_unsafe"})
+    if float(best.get("score") or 0) < 7:
+        blockers.append({"code": "composition_below_7", "actual": best.get("score")})
+    return {
+        "title": str(title), "blocks": len(visible), "flex_share": flex_share,
+        "best_goal": best.get("goal"), "composition_score": best.get("score"),
+        "editor_safe": bool(roundtrip.get("editor_safe")),
+        "eligible": not blockers, "blockers": blockers,
+        "next_action": "Run tobiz_register_design_template for full visual QA." if not blockers else None,
     }
 
 

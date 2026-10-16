@@ -63,6 +63,7 @@ READ_TOOLS = {
     "tobiz_list_page_backups",
     "tobiz_design_library", "tobiz_select_design",
     "tobiz_validate_design_library", "tobiz_list_design_feedback", "tobiz_design_lessons",
+    "tobiz_discover_design_candidates",
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
     "tobiz_layout_registry", "tobiz_repair_layout",
@@ -290,6 +291,42 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"valid": all(item["available"] and not item["drift"] for item in results),
                 "templates": results, "checked": len(results),
                 "drifted": sum(bool(item["drift"]) for item in results)}
+
+    @tool("tobiz_discover_design_candidates",
+          "Read-only structural screening of pages in one project. Ranks pages that may become local "
+          "design templates by native block count, Flex share, composition and editor safety. Full visual "
+          "QA is still required through tobiz_register_design_template.")
+    async def tobiz_discover_design_candidates(project_id: Id | None = None,
+                                               max_pages: int = 20) -> dict[str, Any]:
+        project, pages = await service.pages(project_id)
+        bounded = max(1, min(int(max_pages), 50))
+        selected_pages = pages[:bounded]
+        semaphore = asyncio.Semaphore(3)
+
+        async def inspect(page: Any) -> dict[str, Any]:
+            async with semaphore:
+                try:
+                    draft = await service.draft(project.project_id, page.page_id)
+                    roundtrip = await service.editor_roundtrip(project.project_id, page.page_id)
+                    result = design_domain.assess_template_candidate(
+                        draft, roundtrip, title=page.title)
+                    return {"page_id": page.page_id,
+                            "editor_url": service.config.editor_url(project.project_id, page.page_id),
+                            **result}
+                except Exception as exc:
+                    return {"page_id": page.page_id, "title": page.title, "eligible": False,
+                            "blockers": [{"code": "page_inspection_failed", "error": str(exc)}]}
+
+        candidates = await asyncio.gather(*(inspect(page) for page in selected_pages))
+        candidates.sort(key=lambda item: (
+            not bool(item.get("eligible")),
+            -float(item.get("composition_score") or 0),
+            float(item.get("flex_share") or 1),
+            -int(item.get("blocks") or 0),
+        ))
+        return {"project_id": project.project_id, "pages_checked": len(candidates),
+                "eligible_count": sum(bool(item.get("eligible")) for item in candidates),
+                "candidates": candidates, "visual_qa_completed": False}
 
     @tool("tobiz_refresh_design_passport",
           "Re-read one installed template and preview refreshed block-count/Flex facts. apply=true stores "

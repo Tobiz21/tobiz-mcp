@@ -54,6 +54,7 @@ REQUIRED_TOOLS = {
     "tobiz_design_lessons",
     "tobiz_refresh_design_passport",
     "tobiz_register_design_template",
+    "tobiz_discover_design_candidates",
 }
 
 

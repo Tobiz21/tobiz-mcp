@@ -1698,6 +1698,7 @@ class Service:
                 "quality_gated_design_template_registration",
                 "available_template_fallback_selection",
                 "bounded_parallel_template_preflight",
+                "design_template_candidate_discovery",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
