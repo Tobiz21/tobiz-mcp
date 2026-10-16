@@ -100,6 +100,23 @@ def audit_article(article: dict[str, Any]) -> dict[str, Any]:
     })
 
 
+def preflight_article(fields: dict[str, Any], category_ids: list[Any] | None = None,
+                      image_count: int = 0) -> dict[str, Any]:
+    """Audit a proposed article package before TOBIZ creates a persistent entity."""
+    candidate = dict(fields or {})
+    candidate["id"] = "preview"
+    candidate["categories"] = list(category_ids or [])
+    candidate["images"] = [{"id": f"planned-{index + 1}"}
+                           for index in range(max(0, int(image_count or 0)))]
+    result = audit_article(candidate)
+    result["preview"] = True
+    result["next_action"] = (
+        "Create the article with native TOBIZ tools, upload the planned images, then run "
+        "tobiz_audit_article." if result["ready_for_publication"] else
+        "Fix every blocker in the package before creating the article.")
+    return result
+
+
 def audit_product(product: dict[str, Any], offers: list[dict[str, Any]] | None = None,
                   allow_price_on_request: bool = False) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
@@ -169,3 +186,22 @@ def audit_product(product: dict[str, Any], offers: list[dict[str, Any]] | None =
         "images": len(images), "categories": len(categories), "offers": len(variants),
         "videos": len([value for value in videos if value]), "price": price,
     })
+
+
+def preflight_product(fields: dict[str, Any], category_ids: list[Any] | None = None,
+                      offers: list[dict[str, Any]] | None = None, image_count: int = 0,
+                      allow_price_on_request: bool = False) -> dict[str, Any]:
+    """Audit a proposed product package before TOBIZ creates a persistent entity."""
+    candidate = dict(fields or {})
+    candidate["id"] = "preview"
+    candidate["categories"] = list(category_ids or [])
+    candidate["images"] = [{"id": f"planned-{index + 1}"}
+                           for index in range(max(0, int(image_count or 0)))]
+    result = audit_product(candidate, list(offers or []),
+                           allow_price_on_request=allow_price_on_request)
+    result["preview"] = True
+    result["next_action"] = (
+        "Create the product with native TOBIZ tools, upload the planned images, create offers, "
+        "then run tobiz_audit_product." if result["ready_for_publication"] else
+        "Fix every blocker in the package before creating the product.")
+    return result

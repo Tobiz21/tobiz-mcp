@@ -85,6 +85,26 @@ def test_product_price_on_request_can_be_explicitly_allowed():
     assert "product_price_missing" not in {item["code"] for item in result["issues"]}
 
 
+def test_article_preflight_validates_planned_native_media_before_write():
+    value = article()
+    value.pop("images")
+    value.pop("categories")
+    result = module_quality.preflight_article(value, ["2"], image_count=1)
+    assert result["ready_for_publication"] is True
+    assert result["preview"] is True
+    assert result["id"] == "preview"
+
+
+def test_product_preflight_blocks_incomplete_offer_before_write():
+    value = product()
+    value.pop("images")
+    value.pop("categories")
+    result = module_quality.preflight_product(
+        value, ["4"], [{"title": "Высота 6 м", "vendor_code": "T-6"}], image_count=1)
+    assert result["ready_for_publication"] is False
+    assert "product_offer_price_missing" in {item["code"] for item in result["blockers"]}
+
+
 def registered_functions(service):
     functions = {}
 
@@ -127,3 +147,21 @@ async def test_product_audit_tool_reads_offers():
     assert response["ok"] is True
     assert response["data"]["ready_for_publication"] is True
     service.product_offers.assert_awaited_once_with("7", "2")
+
+
+@pytest.mark.asyncio
+async def test_module_preflight_tools_do_not_access_tobiz():
+    service = SimpleNamespace(config=SimpleNamespace(read_only=False))
+    functions = registered_functions(service)
+    article_value = article()
+    article_value.pop("images")
+    article_value.pop("categories")
+    article_response = await functions["tobiz_preflight_article"](
+        fields=article_value, category_ids=["2"], image_count=1)
+    product_value = product()
+    product_value.pop("images")
+    product_value.pop("categories")
+    product_response = await functions["tobiz_preflight_product"](
+        fields=product_value, category_ids=["4"], image_count=1)
+    assert article_response["data"]["ready_for_publication"] is True
+    assert product_response["data"]["ready_for_publication"] is True

@@ -1727,6 +1727,7 @@ class Service:
                 "broken_form_editor_blocker",
                 "article_publication_quality_audit",
                 "product_publication_quality_audit",
+                "article_product_preflight",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

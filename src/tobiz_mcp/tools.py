@@ -55,9 +55,9 @@ READ_TOOLS = {
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
-    "tobiz_list_articles", "tobiz_get_article", "tobiz_audit_article",
+    "tobiz_list_articles", "tobiz_get_article", "tobiz_preflight_article", "tobiz_audit_article",
     "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
-    "tobiz_audit_product",
+    "tobiz_preflight_product", "tobiz_audit_product",
     "tobiz_list_product_categories",
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
     "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
@@ -724,6 +724,15 @@ def register(mcp: Any, service: Service) -> list[str]:
         article = await service.module_get(project.project_id, "article", article_id)
         return module_quality_domain.audit_article(article)
 
+    @tool("tobiz_preflight_article",
+          "Read-only validation of a complete proposed article before creating it. Pass the final "
+          "fields, category_ids and number of images that will be uploaded.")
+    async def tobiz_preflight_article(fields: dict[str, Any] | None = None,
+                                      category_ids: list[Id] | None = None,
+                                      image_count: int = 0) -> dict[str, Any]:
+        return module_quality_domain.preflight_article(
+            fields or {}, list(category_ids or []), image_count)
+
     @tool("tobiz_list_article_categories", "Категории статей проекта.")
     async def tobiz_list_article_categories(project_id: Id | None = None) -> dict[str, Any]:
         project = await service.project(project_id)
@@ -811,6 +820,18 @@ def register(mcp: Any, service: Service) -> list[str]:
         offers = await service.product_offers(project.project_id, str(product_id))
         return module_quality_domain.audit_product(
             product, offers, allow_price_on_request=allow_price_on_request)
+
+    @tool("tobiz_preflight_product",
+          "Read-only validation of a complete proposed product before creating it. Pass final "
+          "fields, category_ids, planned offers and number of images.")
+    async def tobiz_preflight_product(fields: dict[str, Any] | None = None,
+                                      category_ids: list[Id] | None = None,
+                                      offers: list[dict[str, Any]] | None = None,
+                                      image_count: int = 0,
+                                      allow_price_on_request: bool = False) -> dict[str, Any]:
+        return module_quality_domain.preflight_product(
+            fields or {}, list(category_ids or []), list(offers or []), image_count,
+            allow_price_on_request=allow_price_on_request)
 
     @tool("tobiz_list_product_categories", "Категории интернет-магазина проекта.")
     async def tobiz_list_product_categories(project_id: Id | None = None) -> dict[str, Any]:
