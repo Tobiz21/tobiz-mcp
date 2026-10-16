@@ -133,6 +133,15 @@ def _package_images(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]
     return result
 
 
+def _entity_category_ids(entity: dict[str, Any]) -> list[str]:
+    result = []
+    for value in entity.get("categories") or []:
+        category_id = value.get("id") if isinstance(value, dict) else value
+        if category_id not in (None, ""):
+            result.append(str(category_id))
+    return result
+
+
 async def _all_module_rows(service: Service, project_id: str, kind: str,
                            key: str) -> tuple[list[dict[str, Any]], bool]:
     """Read a complete module inventory and detect broken pagination."""
@@ -943,6 +952,52 @@ def register(mcp: Any, service: Service) -> list[str]:
                                            fields or {}, None if category_ids is None
                                            else list(category_ids))
 
+    @tool("tobiz_update_article_package",
+          "Preview or transactionally update an existing native article. The final merged article "
+          "must pass publication preflight. apply=true updates fields/categories, re-reads and audits; "
+          "on any failure the previous fields and categories are restored. Images remain unchanged.")
+    async def tobiz_update_article_package(
+            project_id: Id | None = None, article_id: Id = "",
+            fields: dict[str, Any] | None = None,
+            category_ids: list[Id] | None = None, apply: bool = False) -> dict[str, Any]:
+        project = await service.project(project_id)
+        current = await service.module_get(project.project_id, "article", article_id)
+        updates = dict(fields or {})
+        if not updates and category_ids is None:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте fields или category_ids для обновления статьи")
+        final_categories = (_entity_category_ids(current) if category_ids is None
+                            else [str(value) for value in category_ids])
+        candidate = {**current, **updates}
+        preflight = module_quality_domain.preflight_article(
+            candidate, final_categories, len(current.get("images") or []))
+        if not apply:
+            return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
+                    "article_id": str(article_id), "preflight": preflight}
+        if not preflight["ready_for_publication"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Обновление статьи не проходит preflight",
+                                    "Исправьте blockers до записи", raw=preflight)
+        previous_fields = {name: current.get(name) for name in updates}
+        previous_categories = _entity_category_ids(current)
+        try:
+            await service.module_update(project.project_id, "article", str(article_id), updates,
+                                        final_categories if category_ids is not None else None)
+            saved = await service.module_get(project.project_id, "article", article_id)
+            audit = module_quality_domain.audit_article(saved)
+            if not audit["ready_for_publication"]:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "Обновленная статья не прошла итоговый аудит", raw=audit)
+            return {"updated": True, "article": saved, "audit": audit}
+        except Exception:
+            try:
+                await service.module_update(
+                    project.project_id, "article", str(article_id), previous_fields,
+                    previous_categories if category_ids is not None else None)
+            except Exception:
+                logger.exception("не удалось откатить обновление статьи %s", article_id)
+            raise
+
     @tool("tobiz_upload_article_image",
           "Загрузить изображение в галерею статьи из path или content_base64.")
     async def tobiz_upload_article_image(project_id: Id | None = None,
@@ -1128,6 +1183,96 @@ def register(mcp: Any, service: Service) -> list[str]:
         return await service.module_update(project.project_id, "item", product_id,
                                            fields or {}, None if category_ids is None
                                            else list(category_ids))
+
+    @tool("tobiz_update_product_package",
+          "Preview or transactionally update an existing native product and its existing offers. "
+          "offer_updates items contain offer_id and fields. The merged product must pass publication "
+          "preflight. apply=true restores previous product fields, categories and offers on failure. "
+          "Images remain unchanged.")
+    async def tobiz_update_product_package(
+            project_id: Id | None = None, product_id: Id = "",
+            fields: dict[str, Any] | None = None,
+            category_ids: list[Id] | None = None,
+            offer_updates: list[dict[str, Any]] | None = None,
+            allow_price_on_request: bool = False, apply: bool = False) -> dict[str, Any]:
+        project = await service.project(project_id)
+        current = await service.module_get(project.project_id, "item", product_id)
+        current_offers = await service.product_offers(project.project_id, str(product_id))
+        updates = dict(fields or {})
+        requested_offers = list(offer_updates or [])
+        if not updates and category_ids is None and not requested_offers:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                "Передайте fields, category_ids или offer_updates для обновления товара")
+        offers_by_id = {str(offer.get("id") or ""): dict(offer) for offer in current_offers}
+        normalized_updates = []
+        for index, item in enumerate(requested_offers):
+            if not isinstance(item, dict) or not str(item.get("offer_id") or ""):
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT, f"offer_updates[{index}].offer_id обязателен")
+            offer_id = str(item["offer_id"])
+            if offer_id not in offers_by_id:
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        f"Вариант {offer_id} не принадлежит товару {product_id}")
+            offer_fields = item.get("fields")
+            if not isinstance(offer_fields, dict) or not offer_fields:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT, f"offer_updates[{index}].fields должен быть непустым объектом")
+            normalized_updates.append({"offer_id": offer_id, "fields": dict(offer_fields)})
+        candidate_offers = []
+        update_map = {item["offer_id"]: item["fields"] for item in normalized_updates}
+        for offer_id, offer in offers_by_id.items():
+            candidate_offers.append({**offer, **update_map.get(offer_id, {})})
+        final_categories = (_entity_category_ids(current) if category_ids is None
+                            else [str(value) for value in category_ids])
+        candidate = {**current, **updates}
+        preflight = module_quality_domain.preflight_product(
+            candidate, final_categories, candidate_offers, len(current.get("images") or []),
+            allow_price_on_request=allow_price_on_request)
+        if not apply:
+            return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
+                    "product_id": str(product_id), "preflight": preflight,
+                    "offer_updates": normalized_updates}
+        if not preflight["ready_for_publication"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Обновление товара не проходит preflight",
+                                    "Исправьте blockers до записи", raw=preflight)
+        previous_fields = {name: current.get(name) for name in updates}
+        previous_categories = _entity_category_ids(current)
+        previous_offer_fields = {
+            item["offer_id"]: {name: offers_by_id[item["offer_id"]].get(name)
+                               for name in item["fields"]}
+            for item in normalized_updates
+        }
+        try:
+            await service.module_update(project.project_id, "item", str(product_id), updates,
+                                        final_categories if category_ids is not None else None)
+            for item in normalized_updates:
+                await service.product_offer_update(
+                    project.project_id, item["offer_id"], item["fields"])
+            saved = await service.module_get(project.project_id, "item", product_id)
+            saved_offers = await service.product_offers(project.project_id, str(product_id))
+            audit = module_quality_domain.audit_product(
+                saved, saved_offers, allow_price_on_request=allow_price_on_request)
+            if not audit["ready_for_publication"]:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "Обновленный товар не прошел итоговый аудит", raw=audit)
+            return {"updated": True, "product": saved, "offers": saved_offers, "audit": audit}
+        except Exception:
+            for item in reversed(normalized_updates):
+                try:
+                    await service.product_offer_update(
+                        project.project_id, item["offer_id"],
+                        previous_offer_fields[item["offer_id"]])
+                except Exception:
+                    logger.exception("не удалось откатить вариант %s", item["offer_id"])
+            try:
+                await service.module_update(
+                    project.project_id, "item", str(product_id), previous_fields,
+                    previous_categories if category_ids is not None else None)
+            except Exception:
+                logger.exception("не удалось откатить обновление товара %s", product_id)
+            raise
 
     @tool("tobiz_upload_product_image",
           "Загрузить изображение в галерею товара из path или content_base64.")

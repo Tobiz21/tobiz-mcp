@@ -265,3 +265,59 @@ async def test_publish_product_package_maps_offer_image_index_to_native_id():
     assert response["ok"] is True
     assert service.product_offer_create.await_args.args[2]["image_id"] == "91"
     assert "image_index" not in service.product_offer_create.await_args.args[2]
+
+
+@pytest.mark.asyncio
+async def test_update_article_package_previews_merged_existing_media():
+    current = article()
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_get=AsyncMock(return_value=current),
+    )
+    response = await registered_functions(service)["tobiz_update_article_package"](
+        project_id="7", article_id="1",
+        fields={"title": "Как выбрать подходящую программу обучения для ребенка"}, apply=False)
+    assert response["ok"] is True
+    assert response["data"]["ready_for_apply"] is True
+    assert response["data"]["preflight"]["metrics"]["images"] == 1
+
+
+@pytest.mark.asyncio
+async def test_update_article_package_restores_previous_fields_after_failed_audit():
+    current = article()
+    broken = {**current, "images": []}
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_get=AsyncMock(side_effect=[current, broken]),
+        module_update=AsyncMock(),
+    )
+    response = await registered_functions(service)["tobiz_update_article_package"](
+        project_id="7", article_id="1",
+        fields={"title": "Как выбрать подходящую программу обучения для ребенка"}, apply=True)
+    assert response["ok"] is False
+    assert service.module_update.await_count == 2
+    assert service.module_update.await_args_list[-1].args[3] == {"title": current["title"]}
+
+
+@pytest.mark.asyncio
+async def test_update_product_package_restores_offer_and_product_on_failure():
+    current = product()
+    current_offer = {"id": "71", "title": "Высота 6 м", "vendor_code": "T-6",
+                     "price": 24900, "quantity": 3}
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_get=AsyncMock(side_effect=[current, {**current, "images": []}]),
+        product_offers=AsyncMock(side_effect=[[current_offer], [current_offer]]),
+        module_update=AsyncMock(), product_offer_update=AsyncMock(),
+    )
+    response = await registered_functions(service)["tobiz_update_product_package"](
+        project_id="7", product_id="2", fields={"price": 25900},
+        offer_updates=[{"offer_id": "71", "fields": {"price": 25900}}], apply=True)
+    assert response["ok"] is False
+    assert service.product_offer_update.await_count == 2
+    assert service.product_offer_update.await_args_list[-1].args[2] == {"price": 24900}
+    assert service.module_update.await_count == 2
+    assert service.module_update.await_args_list[-1].args[3] == {"price": 24900}

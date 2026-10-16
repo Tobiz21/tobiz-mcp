@@ -274,9 +274,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
 | `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле; ответ содержит измеренные width/height, формат, aspect ratio, SHA-256 и готовый `media_asset` |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
-| `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article`, `tobiz_preflight_article`, `tobiz_audit_article`, `tobiz_publish_article_package` | штатный редактор статей, проверка и атомарная публикация полного пакета с откатом, аудит готовой публикации |
+| `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_update_article_package`, `tobiz_delete_article`, `tobiz_preflight_article`, `tobiz_audit_article`, `tobiz_publish_article_package` | штатный редактор статей, проверка, транзакционное создание и обновление с откатом, аудит готовой публикации |
 | `tobiz_upload_article_image`, `tobiz_sort_article_images`, `tobiz_list_article_categories` | изображения, их порядок и категории статей |
-| `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_delete_product`, `tobiz_preflight_product`, `tobiz_audit_product`, `tobiz_publish_product_package` | управление товарами, проверка и атомарная публикация карточки с фото и вариантами, аудит готовой публикации |
+| `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_update_product_package`, `tobiz_delete_product`, `tobiz_preflight_product`, `tobiz_audit_product`, `tobiz_publish_product_package` | управление товарами, транзакционное создание и обновление карточки с вариантами, аудит готовой публикации |
 | `tobiz_upload_product_image`, `tobiz_sort_product_images`, `tobiz_list_product_categories` | галерея, порядок фото и категории товаров |
 | `tobiz_list_product_offers`, `tobiz_get_product_offer`, `tobiz_create_product_offer`, `tobiz_update_product_offer`, `tobiz_delete_product_offer` | варианты товара: название, артикул, цена, остаток и фото |
 
