@@ -362,19 +362,6 @@ def _requested_form_fields(brief: dict[str, Any]) -> list[str]:
     return normalized
 
 
-def _native_form_arrays(value: Any, path: str = ""):
-    if isinstance(value, dict):
-        for key, child in value.items():
-            pointer = path + "/" + str(key).replace("~", "~0").replace("/", "~1")
-            if re.fullmatch(r"form\d+", str(key)) and isinstance(child, list) and child:
-                yield pointer, str(key), child
-            elif key not in {"cache", "html", "code", "css", "styles"}:
-                yield from _native_form_arrays(child, pointer)
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            yield from _native_form_arrays(child, path + f"/{index}")
-
-
 def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
     """Validate native lead forms against the requested conversion contract."""
     required = _requested_form_fields(brief)
@@ -384,7 +371,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         block = draft.blocks[block_id]
         if block.deleted:
             continue
-        for form_path, key, value in _native_form_arrays(block.values):
+        for form_path, key, value in content.native_form_arrays(block.values):
             controls = [item for item in value if isinstance(item, dict)]
             roles = [_form_field_role(item) for item in controls]
             missing = [role for role in required if role not in roles]

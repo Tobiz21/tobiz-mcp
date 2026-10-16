@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .draft import Draft
-from . import flex as flex_domain
+from . import content as content_domain, flex as flex_domain
 
 
 def report(draft: Draft, block_types: dict[str, Any], rendered: dict[str, str],
@@ -54,14 +54,16 @@ def report(draft: Draft, block_types: dict[str, Any], rendered: dict[str, str],
             critical.append({"code": "empty_render", "block_id": block_id,
                              "type_id": block.type_id})
 
-        form = block.values.get("form1")
-        if isinstance(form, list):
-            has_field = any(isinstance(item, dict) and item.get("type") not in {"btn", "button"}
+        for form_path, _, form in content_domain.native_form_arrays(block.values):
+            has_field = any(isinstance(item, dict)
+                            and item.get("type") not in {"btn", "button", "submit"}
                             for item in form)
-            has_button = any(isinstance(item, dict) and item.get("type") in {"btn", "button"}
+            has_button = any(isinstance(item, dict)
+                             and item.get("type") in {"btn", "button", "submit"}
                              for item in form)
             if has_field and not has_button:
-                warnings.append({"code": "form_without_button", "block_id": block_id})
+                warnings.append({"code": "form_without_button", "block_id": block_id,
+                                 "form_path": form_path})
 
     for anchor, block_ids in anchors.items():
         if len(block_ids) > 1:

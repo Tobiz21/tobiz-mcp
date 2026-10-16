@@ -76,3 +76,33 @@ def test_invalid_flex_mobile_layout_blocks_editor_roundtrip():
     result = editor.report(draft, types, rendered, payload_for(draft, rendered))
     assert result["verdict"] == "save_blocked"
     assert "flex_mobile_layout_missing" in {item["code"] for item in result["critical"]}
+
+
+def test_nested_flex_form_without_button_requires_editor_review():
+    values = {"flexblocks": [{
+        "id": "lead", "type": "form", "content": {
+            "form1": [{"type": "phone", "title": "Телефон"}],
+        },
+    }]}
+    draft = make_draft([DraftBlock("10", "1600", values)])
+    types = {"1600": SimpleNamespace(has_template=True)}
+    rendered = {"10": "<section>Полностью отрендерированный штатный Flex TOBIZ</section>"}
+    result = editor.report(draft, types, rendered, payload_for(draft, rendered))
+    warning = next(item for item in result["warnings"]
+                   if item["code"] == "form_without_button")
+    assert result["verdict"] == "review"
+    assert warning["form_path"] == "/flexblocks/0/content/form1"
+
+
+def test_nested_submit_control_is_accepted_by_editor_roundtrip():
+    values = {"flexblocks": [{
+        "id": "lead", "type": "form", "content": {"form1": [
+            {"type": "phone", "title": "Телефон"},
+            {"type": "submit", "title": "Отправить"},
+        ]},
+    }]}
+    draft = make_draft([DraftBlock("10", "1600", values)])
+    types = {"1600": SimpleNamespace(has_template=True)}
+    rendered = {"10": "<section>Полностью отрендерированный штатный Flex TOBIZ</section>"}
+    result = editor.report(draft, types, rendered, payload_for(draft, rendered))
+    assert "form_without_button" not in {item["code"] for item in result["warnings"]}

@@ -1723,6 +1723,7 @@ class Service:
                 "labeled_native_form_field_gate",
                 "brief_aligned_required_form_fields",
                 "nested_native_form_discovery",
+                "nested_form_editor_roundtrip",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

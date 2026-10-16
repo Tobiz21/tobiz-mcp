@@ -29,6 +29,20 @@ def fields(value, path=""):
             yield from fields(child, path + f"/{index}")
 
 
+def native_form_arrays(value, path=""):
+    """Yield native form arrays at any safe model depth with JSON-pointer paths."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            pointer = path + "/" + str(key).replace("~", "~0").replace("/", "~1")
+            if re.fullmatch(r"form\d+", str(key)) and isinstance(child, list) and child:
+                yield pointer, str(key), child
+            elif key not in {"cache", "html", "code", "css", "styles"}:
+                yield from native_form_arrays(child, pointer)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from native_form_arrays(child, path + f"/{index}")
+
+
 def fingerprint(draft):
     data = {"meta": draft.page_meta, "blocks": [
         [bid, draft.blocks[bid].type_id, draft.blocks[bid].deleted, draft.blocks[bid].values]
