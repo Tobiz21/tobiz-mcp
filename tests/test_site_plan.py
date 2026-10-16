@@ -61,6 +61,31 @@ def test_recipe_links_require_existing_native_anchor():
     assert missing['available_anchors'] == ['contacts', 'programs']
 
 
+def test_seo_alignment_requires_confirmed_topic_and_region():
+    result = site_plan.validate_seo_alignment({
+        'industry': 'Бурение скважин', 'region': 'Чувашия',
+    }, {
+        'title': 'Профессиональная помощь',
+        'seo_title': 'Надежная компания с большим опытом',
+        'seo_description': 'Выполняем работы качественно и в согласованные сроки.',
+    })
+    assert result['ready'] is False
+    assert {item['code'] for item in result['issues']} == {
+        'seo_topic_not_grounded', 'seo_region_missing'}
+
+
+def test_seo_alignment_accepts_inflected_local_topic():
+    result = site_plan.validate_seo_alignment({
+        'industry': 'Бурение скважин', 'region': 'Чувашия',
+    }, {
+        'title': 'Бурение скважин в Чувашии',
+        'seo_title': 'Бурение скважин под ключ в Чувашии',
+        'seo_description': 'Пробурим скважину и подготовим систему водоснабжения.',
+    })
+    assert result['ready'] is True
+    assert result['issues'] == []
+
+
 def test_content_compiler_requires_evidence_and_accepts_nested_facts():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики', 'facts': {

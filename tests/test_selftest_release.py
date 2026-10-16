@@ -80,6 +80,7 @@ class FakeService:
             "native_conversion_contract_gate",
             "native_anchor_recipe_validation",
             "brief_aligned_primary_cta_gate",
+            "brief_aligned_seo_gate",
             "semantic_media_assignment_gate",
             "within_group_media_deduplication",
             "content_hash_media_deduplication",

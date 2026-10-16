@@ -870,6 +870,53 @@ def validate_recipe_links(plan: dict[str, Any], recipe: dict[str, Any]) -> dict[
     return {"valid": not issues, "anchors": sorted(anchors), "issues": issues}
 
 
+def validate_seo_alignment(brief: dict[str, Any], seo: dict[str, Any],
+                           draft_mode: bool = False) -> dict[str, Any]:
+    """Ensure SEO metadata describes the confirmed topic and local market from the brief."""
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+
+    def first_values(keys: tuple[str, ...]) -> list[str]:
+        return [str(brief.get(key) or facts.get(key) or "").strip()
+                for key in keys if str(brief.get(key) or facts.get(key) or "").strip()]
+
+    ignored = {"для", "или", "это", "как", "услуги", "компания", "сайт", "главная"}
+
+    def tokens(values: list[str]) -> set[str]:
+        return {token for value in values for token in re.findall(
+            r"[0-9A-Za-zА-Яа-яЁё]{3,}", value.lower().replace("ё", "е"))
+                if token not in ignored}
+
+    def overlaps(expected: set[str], actual: set[str]) -> bool:
+        if expected & actual:
+            return True
+        return bool({token[:4] for token in expected if len(token) >= 5}
+                    & {token[:4] for token in actual if len(token) >= 5})
+
+    topic_values = first_values((
+        "industry", "offer", "service", "services", "program", "product", "category"))
+    region_values = first_values(("region", "city", "location", "geography"))
+    seo_text = [str(seo.get(key) or "") for key in (
+        "title", "seo_title", "seo_description", "seo_keywords")]
+    actual = tokens(seo_text)
+    issues = []
+    priority = "improve" if draft_mode else "must_fix"
+    topic_tokens = tokens(topic_values)
+    if topic_tokens and not overlaps(topic_tokens, actual):
+        issues.append({
+            "priority": priority, "code": "seo_topic_not_grounded",
+            "topic": topic_values, "action": "Отразить подтвержденную тему сайта в SEO-метаданных.",
+        })
+    region_tokens = tokens(region_values)
+    if region_tokens and not overlaps(region_tokens, actual):
+        issues.append({
+            "priority": priority, "code": "seo_region_missing",
+            "region": region_values,
+            "action": "Добавить подтвержденный регион в SEO title или description.",
+        })
+    return {"ready": not any(item["priority"] == "must_fix" for item in issues),
+            "topic": topic_values, "region": region_values, "issues": issues}
+
+
 def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
                            blueprint: dict[str, Any], recipe: dict[str, Any] | None,
                            media_recipe: dict[str, Any] | None,
@@ -945,6 +992,9 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         ]}, brief)
         issues.extend(seo_claims.get("issues") or [])
 
+    seo_alignment = validate_seo_alignment(brief, seo_values, draft_mode)
+    issues.extend(seo_alignment["issues"])
+
     link_result = validate_recipe_links(plan, recipe or {})
     issues.extend(link_result["issues"])
 
@@ -956,7 +1006,7 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         "conversion_readiness": conversion,
         "evidence_coverage": evidence_coverage,
         "link_validation": link_result,
-        "seo": {"provided": bool(seo_values)},
+        "seo": {"provided": bool(seo_values), "alignment": seo_alignment},
         "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
     }
