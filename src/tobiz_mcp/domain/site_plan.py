@@ -686,6 +686,7 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
     issues: list[dict[str, Any]] = []
     assignments: list[dict[str, Any]] = []
     filenames: dict[str, list[tuple[Any, Any]]] = {}
+    content_hashes: dict[str, list[dict[str, Any]]] = {}
     for key, spec in expected.items():
         group = supplied.get(key)
         if group is None:
@@ -756,6 +757,18 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                                "shot_role": spec.get("shot_role"),
                                "action": "Визуально проверить кадр и подтвердить соответствие смыслу секции."})
             filenames.setdefault(filename.lower(), []).append(key)
+            digest = str(asset.get("sha256") or "").strip().lower()
+            if digest:
+                if re.fullmatch(r"[0-9a-f]{64}", digest):
+                    content_hashes.setdefault(digest, []).append({
+                        "block_index": key[0], "path": paths[index], "filename": filename,
+                    })
+                else:
+                    issues.append({
+                        "priority": "must_fix", "code": "media_digest_invalid",
+                        "block_index": key[0], "path": paths[index],
+                        "action": "Использовать sha256 из media_asset, возвращенного загрузчиком MCP.",
+                    })
             if filename:
                 group_filenames.setdefault(filename.lower(), []).append(paths[index])
             assignments.append({"block_index": key[0], "path": paths[index], "value": filename})
@@ -781,6 +794,13 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
             issues.append({"priority": "must_fix", "code": "media_reused_across_sections",
                            "filename": filename, "uses": len(groups),
                            "action": "Не повторять один кадр в разных смысловых секциях без причины."})
+    for digest, uses in content_hashes.items():
+        if len(uses) > 1 and len({item["filename"].lower() for item in uses}) > 1:
+            issues.append({
+                "priority": "must_fix", "code": "media_content_reused_under_new_name",
+                "sha256": digest, "uses": uses,
+                "action": "Заменить переименованные копии отдельными содержательными кадрами.",
+            })
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
     return {"plan_id": plan.get("plan_id"), "ready_for_build": not blockers,
             "required_groups": len(expected), "assigned_slots": len(assignments),

@@ -291,6 +291,29 @@ def test_media_preflight_blocks_reused_image_inside_card_group():
     assert issue['paths'] == ['/items/0/image', '/items/1/image']
 
 
+def test_media_preflight_detects_same_bytes_under_different_names():
+    blueprint = {'photo_slots': [{
+        'block_index': 2, 'path_pattern': '/items/0/image', 'role': 'catalog_image',
+        'paths': ['/items/0/image', '/items/1/image'], 'slots': 2,
+    }]}
+    digest = 'a' * 64
+    assets = [{
+        'filename': filename, 'width': 1000, 'height': 1000, 'sha256': digest,
+        'subject': subject, 'section_fit_confirmed': True,
+    } for filename, subject in [
+        ('card-one.webp', 'Первый комплект оборудования'),
+        ('card-two.webp', 'Второй комплект оборудования'),
+    ]]
+    result = site_plan.validate_media_recipe({'plan_id': 'media'}, blueprint, {'groups': [{
+        'block_index': 2, 'path_pattern': '/items/0/image', 'assets': assets,
+    }]})
+    issue = next(item for item in result['blockers']
+                 if item['code'] == 'media_content_reused_under_new_name')
+    assert result['ready_for_build'] is False
+    assert {item['filename'] for item in issue['uses']} == {
+        'card-one.webp', 'card-two.webp'}
+
+
 def test_unified_preflight_accepts_complete_quality_package():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.', 'facts': {

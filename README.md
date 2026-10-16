@@ -264,7 +264,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_check_site_plan` | проверка готовой страницы против `plan_id`, структуры и ролей с аудитом фото, эталона, редактора и единым дизайн-гейтом |
 | `tobiz_delete_page` | удаление страницы (требует `confirm=true`) |
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
-| `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле; ответ содержит измеренные width/height, формат, aspect ratio и готовый `media_asset` |
+| `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле; ответ содержит измеренные width/height, формат, aspect ratio, SHA-256 и готовый `media_asset` |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
 | `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article` | штатный редактор статей: тексты, URL, SEO, публикация, категории |
 | `tobiz_upload_article_image`, `tobiz_sort_article_images`, `tobiz_list_article_categories` | изображения, их порядок и категории статей |
@@ -360,6 +360,8 @@ desktop/tablet/mobile-аудит, смысловую полноту, опцио�
 и `shot_role`, поэтому фото учителя не должно случайно попадать в отзывы или процесс. Общие подписи
 «фото», «женщина», «изображение» не проходят проверку, как и повтор одного файла в разных секциях.
 Повтор одного файла в нескольких карточках или ячейках одной галереи также блокируется.
+`media_asset` содержит SHA-256 фактических байтов, поэтому переименованная копия того же кадра
+тоже распознается и не проходит quality preflight.
 Для фоновых кадров отдельно остается обязательным `safe_text_area=true`.
 
 При заполнении каждого текстового слота передавайте `evidence_codes` из
@@ -417,7 +419,8 @@ MCP сохраняет прежнее состояние в истории из 
 
 При загрузке каждого PNG, JPEG, GIF или WebP используйте `media_asset` из ответа
 `tobiz_upload_image`: MCP измеряет фактические размеры по содержимому файла. Не вводите width,
-height и aspect ratio вручную. Для SVG без абсолютных размеров значения остаются `null`.
+height, aspect ratio и sha256 вручную - передавайте `media_asset` целиком. Для SVG без абсолютных
+размеров значения остаются `null`.
 
 ## Как это устроено (коротко)
 

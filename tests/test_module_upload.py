@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -63,4 +64,5 @@ def test_module_upload_uses_vendor_entity(
     assert result["id"] == "99" and result["images"] == [{"id": "1"}]
     assert result["uploaded_asset"] == {
         "filename": "test.png", "width": 1, "height": 1,
-        "aspect_ratio": 1.0, "content_type": "image/png", "bytes": len(PNG)}
+        "aspect_ratio": 1.0, "content_type": "image/png", "bytes": len(PNG),
+        "sha256": hashlib.sha256(PNG).hexdigest()}

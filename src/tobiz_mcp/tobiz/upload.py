@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import re
 import struct
 from dataclasses import dataclass
@@ -43,10 +44,15 @@ class PreparedImage:
     def aspect_ratio(self) -> float | None:
         return round(self.width / self.height, 4) if self.width and self.height else None
 
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.content).hexdigest()
+
     def metadata(self, filename: str | None = None) -> dict[str, object]:
         return {"filename": filename or self.file_name, "width": self.width,
                 "height": self.height, "aspect_ratio": self.aspect_ratio,
-                "content_type": self.content_type, "bytes": self.size}
+                "content_type": self.content_type, "bytes": self.size,
+                "sha256": self.sha256}
 
 
 def _sniff(content: bytes, file_name: str) -> str:

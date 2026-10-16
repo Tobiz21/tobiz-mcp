@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from pathlib import Path
 
 from tobiz_mcp.config import Config
@@ -21,6 +22,7 @@ def test_png_metadata_is_measured_from_bytes(tmp_path: Path) -> None:
     image = prepare(config(tmp_path), None, base64.b64encode(PNG).decode(), "pixel.png")
     assert (image.width, image.height, image.aspect_ratio) == (1, 1, 1.0)
     assert image.metadata()["content_type"] == "image/png"
+    assert image.metadata()["sha256"] == hashlib.sha256(PNG).hexdigest()
 
 
 def test_jpeg_dimensions_are_read_from_sof_segment(tmp_path: Path) -> None:
