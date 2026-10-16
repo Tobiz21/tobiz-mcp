@@ -6,7 +6,7 @@ import pytest
 from tobiz_mcp.domain import project_quality
 from tobiz_mcp.domain.draft import Draft, DraftBlock
 from tobiz_mcp.tobiz.pages import Page, PageForm
-from tobiz_mcp.tools import register
+from tobiz_mcp.tools import _all_module_rows, register
 
 
 def page(page_id, slug, seo_title, header="105", footer="165"):
@@ -59,6 +59,31 @@ def test_single_page_project_is_not_accepted_as_multipage():
     result = project_quality.audit([page("1", "glavnaya", "Создание сайтов для бизнеса")])
     assert "multipage_has_fewer_than_two_visible_pages" in {
         item["code"] for item in result["blockers"]}
+
+
+@pytest.mark.asyncio
+async def test_module_inventory_reads_every_page_and_deduplicates_ids():
+    first = [{"id": str(index)} for index in range(100)]
+    second = [{"id": "99"}, {"id": "100"}]
+    service = SimpleNamespace(module_list=AsyncMock(side_effect=[
+        {"articles": first}, {"articles": second},
+    ]))
+    rows, complete = await _all_module_rows(service, "7", "article", "articles")
+    assert complete is True
+    assert len(rows) == 101
+    assert rows[-1]["id"] == "100"
+    assert service.module_list.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_module_inventory_blocks_repeating_full_page():
+    repeated = [{"id": str(index)} for index in range(100)]
+    service = SimpleNamespace(module_list=AsyncMock(side_effect=[
+        {"items": repeated}, {"items": repeated},
+    ]))
+    rows, complete = await _all_module_rows(service, "7", "item", "items")
+    assert complete is False
+    assert len(rows) == 100
 
 
 @pytest.mark.asyncio

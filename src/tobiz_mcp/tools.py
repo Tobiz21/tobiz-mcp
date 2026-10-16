@@ -133,6 +133,29 @@ def _package_images(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]
     return result
 
 
+async def _all_module_rows(service: Service, project_id: str, kind: str,
+                           key: str) -> tuple[list[dict[str, Any]], bool]:
+    """Read a complete module inventory and detect broken pagination."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for page_number in range(1, 101):
+        response = await service.module_list(
+            project_id, kind, limit=100, page=page_number)
+        chunk = list(response.get(key) or [])
+        new_rows = []
+        for row in chunk:
+            entity_id = str(row.get("id") or "")
+            if entity_id and entity_id not in seen:
+                seen.add(entity_id)
+                new_rows.append(row)
+        rows.extend(new_rows)
+        if len(chunk) < 100:
+            return rows, True
+        if not new_rows:
+            return rows, False
+    return rows, False
+
+
 def wrap(func: Callable[..., Any], *, tool_name: str = "",
          metric_recorder: Callable[[str, bool, int, str | None], None] | None = None
          ) -> Callable[..., Any]:
@@ -589,12 +612,10 @@ def register(mcp: Any, service: Service) -> list[str]:
             allow_price_on_request: bool = False) -> dict[str, Any]:
         page_audit = await tobiz_audit_project(project_id=project_id, goal=goal)
         resolved_project_id = str(page_audit["project_id"])
-        article_list = await service.module_list(
-            resolved_project_id, "article", limit=100, page=1)
-        product_list = await service.module_list(
-            resolved_project_id, "item", limit=100, page=1)
-        article_rows = list(article_list.get("articles") or [])
-        product_rows = list(product_list.get("items") or [])
+        article_rows, articles_complete = await _all_module_rows(
+            service, resolved_project_id, "article", "articles")
+        product_rows, products_complete = await _all_module_rows(
+            service, resolved_project_id, "item", "items")
         article_audits = []
         product_audits = []
         for row in article_rows:
@@ -625,6 +646,10 @@ def register(mcp: Any, service: Service) -> list[str]:
             blockers.append({"code": "project_articles_required"})
         if require_products and not product_audits:
             blockers.append({"code": "project_products_required"})
+        if not articles_complete:
+            blockers.append({"code": "project_articles_inventory_incomplete"})
+        if not products_complete:
+            blockers.append({"code": "project_products_inventory_incomplete"})
         scores = [float(page_audit["score"])] + [
             float(item["score"]) for item in article_audits + product_audits]
         return {
@@ -632,8 +657,10 @@ def register(mcp: Any, service: Service) -> list[str]:
             "release_ready": not blockers and min(scores) >= 7,
             "score": round(sum(scores) / len(scores), 1), "target": 7.0,
             "blockers": blockers, "pages": page_audit,
-            "articles": {"count": len(article_audits), "audits": article_audits},
-            "products": {"count": len(product_audits), "audits": product_audits},
+            "articles": {"count": len(article_audits), "inventory_complete": articles_complete,
+                         "audits": article_audits},
+            "products": {"count": len(product_audits), "inventory_complete": products_complete,
+                         "audits": product_audits},
         }
 
     @tool("tobiz_list_blocks",
