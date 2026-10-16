@@ -100,3 +100,47 @@ def audit(pages: list[dict[str, Any]]) -> dict[str, Any]:
                     "header_types": dict(Counter(header_types)),
                     "footer_types": dict(Counter(footer_types))},
     }
+
+
+def audit_module_uniqueness(articles: list[dict[str, Any]], products: list[dict[str, Any]],
+                            offers_by_product: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    issues: list[dict[str, Any]] = []
+
+    def duplicates(entities: list[dict[str, Any]], field: str) -> dict[str, list[str]]:
+        values: dict[str, list[str]] = {}
+        for entity in entities:
+            value = str(entity.get(field) or "").strip().strip("/").casefold()
+            if value:
+                values.setdefault(value, []).append(str(entity.get("id") or ""))
+        return {value: ids for value, ids in values.items() if len(ids) > 1}
+
+    checks = [
+        (articles, "dir", "article_slug_duplicate"),
+        (articles, "seo_title", "article_seo_title_duplicate"),
+        (products, "dir", "product_slug_duplicate"),
+        (products, "seo_title", "product_seo_title_duplicate"),
+        (products, "vendor_code", "product_vendor_code_duplicate"),
+    ]
+    for entities, field, code in checks:
+        for value, entity_ids in duplicates(entities, field).items():
+            _issue(issues, "must_fix", code,
+                   f"Сделать поле {field} уникальным во всем проекте.",
+                   field=field, value=value, entity_ids=entity_ids)
+
+    offer_codes: dict[str, list[dict[str, str]]] = {}
+    for product_id, offers in offers_by_product.items():
+        for offer in offers:
+            code = str(offer.get("vendor_code") or "").strip().casefold()
+            if code:
+                offer_codes.setdefault(code, []).append({
+                    "product_id": str(product_id), "offer_id": str(offer.get("id") or "")})
+    for value, locations in offer_codes.items():
+        if len(locations) > 1:
+            _issue(issues, "must_fix", "product_offer_vendor_code_duplicate_global",
+                   "Использовать уникальный артикул варианта во всем каталоге.",
+                   value=value, locations=locations)
+
+    blockers = [item for item in issues if item["priority"] == "must_fix"]
+    return {"ready": not blockers, "issues": issues, "blockers": blockers,
+            "metrics": {"articles": len(articles), "products": len(products),
+                        "offers": sum(len(value) for value in offers_by_product.values())}}

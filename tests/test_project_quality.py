@@ -61,6 +61,40 @@ def test_single_page_project_is_not_accepted_as_multipage():
         item["code"] for item in result["blockers"]}
 
 
+def test_module_uniqueness_blocks_cross_entity_duplicates():
+    result = project_quality.audit_module_uniqueness(
+        [
+            {"id": "a1", "dir": "odin-url", "seo_title": "Одинаковый материал"},
+            {"id": "a2", "dir": "odin-url", "seo_title": "Одинаковый материал"},
+        ],
+        [
+            {"id": "p1", "dir": "tovar", "seo_title": "Карточка товара", "vendor_code": "SKU"},
+            {"id": "p2", "dir": "tovar", "seo_title": "Карточка товара", "vendor_code": "SKU"},
+        ],
+        {
+            "p1": [{"id": "o1", "vendor_code": "VARIANT"}],
+            "p2": [{"id": "o2", "vendor_code": "VARIANT"}],
+        },
+    )
+    codes = {item["code"] for item in result["blockers"]}
+    assert result["ready"] is False
+    assert {"article_slug_duplicate", "article_seo_title_duplicate",
+            "product_slug_duplicate", "product_seo_title_duplicate",
+            "product_vendor_code_duplicate",
+            "product_offer_vendor_code_duplicate_global"} <= codes
+
+
+def test_module_uniqueness_accepts_distinct_catalog_and_blog():
+    result = project_quality.audit_module_uniqueness(
+        [{"id": "a1", "dir": "statya-1", "seo_title": "Первая статья"}],
+        [{"id": "p1", "dir": "tovar-1", "seo_title": "Первый товар",
+          "vendor_code": "SKU-1"}],
+        {"p1": [{"id": "o1", "vendor_code": "SKU-1-A"}]},
+    )
+    assert result["ready"] is True
+    assert result["blockers"] == []
+
+
 @pytest.mark.asyncio
 async def test_module_inventory_reads_every_page_and_deduplicates_ids():
     first = [{"id": str(index)} for index in range(100)]

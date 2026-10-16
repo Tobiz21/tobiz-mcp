@@ -660,10 +660,14 @@ def register(mcp: Any, service: Service) -> list[str]:
             service, resolved_project_id, "item", "items")
         article_audits = []
         product_audits = []
+        article_entities = []
+        product_entities = []
+        offers_by_product: dict[str, list[dict[str, Any]]] = {}
         for row in article_rows:
             entity_id = str(row.get("id") or "")
             if entity_id:
                 article = await service.module_get(resolved_project_id, "article", entity_id)
+                article_entities.append(article)
                 article_audits.append(module_quality_domain.audit_article(
                     article, minimum_body_chars=minimum_article_body_chars))
         for row in product_rows:
@@ -671,6 +675,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             if entity_id:
                 product = await service.module_get(resolved_project_id, "item", entity_id)
                 offers = await service.product_offers(resolved_project_id, entity_id)
+                product_entities.append(product)
+                offers_by_product[entity_id] = offers
                 product_audits.append(module_quality_domain.audit_product(
                     product, offers, allow_price_on_request=allow_price_on_request))
         blockers = []
@@ -693,17 +699,22 @@ def register(mcp: Any, service: Service) -> list[str]:
             blockers.append({"code": "project_articles_inventory_incomplete"})
         if not products_complete:
             blockers.append({"code": "project_products_inventory_incomplete"})
+        uniqueness = project_quality_domain.audit_module_uniqueness(
+            article_entities, product_entities, offers_by_product)
+        blockers.extend(uniqueness["blockers"])
         scores = [float(page_audit["score"])] + [
             float(item["score"]) for item in article_audits + product_audits]
+        score = max(0.0, round(sum(scores) / len(scores) - len(uniqueness["blockers"]), 1))
         return {
             "kind": "whole_project_release", "project_id": resolved_project_id,
             "release_ready": not blockers and min(scores) >= 7,
-            "score": round(sum(scores) / len(scores), 1), "target": 7.0,
+            "score": score, "target": 7.0,
             "blockers": blockers, "pages": page_audit,
             "articles": {"count": len(article_audits), "inventory_complete": articles_complete,
                          "audits": article_audits},
             "products": {"count": len(product_audits), "inventory_complete": products_complete,
                          "audits": product_audits},
+            "module_uniqueness": uniqueness,
         }
 
     @tool("tobiz_list_blocks",
