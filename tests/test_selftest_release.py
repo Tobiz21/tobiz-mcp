@@ -81,6 +81,7 @@ class FakeService:
             "semantic_media_assignment_gate",
             "brief_to_copy_evidence_traceability",
             "grounded_evidence_mapping",
+            "evidence_aware_recipe_verdict",
             "one_call_site_workflow_start",
         ]
         if self.missing_feature:

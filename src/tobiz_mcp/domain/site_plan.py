@@ -532,6 +532,11 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
                        "action": "Заменить все meaningful-поля, отмеченные в missing и unchanged."})
     evidence = plan.get("content_brief") or {}
     evidence_coverage = validate_evidence_coverage(plan, recipe)
+    draft_mode = brief.get("allow_placeholders") is True
+    issues.extend({
+        **item,
+        "priority": "improve" if draft_mode else "must_fix",
+    } for item in evidence_coverage["issues"])
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
     return {
         "plan_id": plan.get("plan_id"), "ready_for_build": not blockers,
@@ -782,8 +787,6 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "action": "Получить подтвержденный факт от клиента или включить режим прототипа.",
         })
     evidence_coverage = content_result["evidence_coverage"]
-    for item in evidence_coverage["issues"]:
-        issues.append({**item, "priority": "improve" if draft_mode else "must_fix"})
     architecture = plan.get("architecture_readiness") or {}
     if architecture and not architecture.get("ready"):
         issues.append({

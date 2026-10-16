@@ -14,6 +14,19 @@ def draft():
     }, order=['10', '11'])
 
 
+def complete_education_brief():
+    return {
+        'industry': 'Онлайн-школа математики',
+        'audience': 'Родители учеников 2-4 классов',
+        'primary_cta': 'Записаться на консультацию',
+        'facts': {
+            'program': 'Арифметика', 'format': 'Онлайн',
+            'teacher': 'Ирина', 'result': 'Самостоятельно решает задачи',
+            'phone': '+7 900 000-00-00',
+        },
+    }
+
+
 def test_plan_is_deterministic_and_uses_native_slots():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики', 'goal': 'Запись на курс'}
@@ -342,6 +355,38 @@ def test_evidence_coverage_rejects_label_without_fact_in_copy():
     assert result['ready'] is False
     assert result['missing'] == ['expert']
     assert result['issues'][-1]['code'] == 'evidence_mapping_not_grounded'
+
+
+def test_recipe_preflight_includes_evidence_coverage_in_build_verdict():
+    source = draft()
+    brief = complete_education_brief()
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Арифметика онлайн'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    assert result['ready_for_build'] is False
+    assert 'confirmed_evidence_not_used' in {item['code'] for item in result['blockers']}
+
+
+def test_recipe_preflight_downgrades_evidence_gap_for_explicit_prototype():
+    source = draft()
+    brief = {**complete_education_brief(), 'allow_placeholders': True}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Арифметика онлайн'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    assert result['ready_for_build'] is True
+    issue = next(item for item in result['issues']
+                 if item['code'] == 'confirmed_evidence_not_used')
+    assert issue['priority'] == 'improve'
 
 
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
