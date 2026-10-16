@@ -120,6 +120,12 @@ PLACEHOLDER_FACT_TERMS = (
     "todo", "placeholder", "lorem ipsum", "example.com", "+7 800 333 22 33",
 )
 
+PLACEHOLDER_COPY_EXACT = {
+    "текст", "описание", "заголовок", "подзаголовок", "название", "уточнить",
+    "ваш текст", "название услуги", "пример текста", "todo", "tbd", "placeholder",
+}
+PLACEHOLDER_COPY_FRAGMENTS = ("lorem ipsum", "вставьте текст", "заполнить позже")
+
 SLOT_INSTRUCTIONS = {
     "section_title": "Коротко назвать смысл секции, без рекламной абстракции.",
     "card_title": "Одна конкретная мысль; соседние карточки должны иметь сопоставимую длину.",
@@ -150,6 +156,13 @@ def _usable_fact(value: Any) -> bool:
         if not any(term in normalized for term in PLACEHOLDER_FACT_TERMS):
             return True
     return False
+
+
+def _placeholder_copy(value: str) -> bool:
+    normalized = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value)).strip().lower()
+    normalized = normalized.replace("ё", "е").strip(" .,:;!?-—–")
+    return (normalized in PLACEHOLDER_COPY_EXACT
+            or any(fragment in normalized for fragment in PLACEHOLDER_COPY_FRAGMENTS))
 
 
 def _fact_status(brief: dict[str, Any], aliases: tuple[str, ...]) -> tuple[bool, list[str]]:
@@ -524,6 +537,13 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
             continue
         value = str(slot.get("value") or "").strip()
         role = str(spec.get("role") or "text")
+        if value and _placeholder_copy(value):
+            issues.append({
+                "priority": "improve" if draft_mode else "must_fix",
+                "code": "placeholder_recipe_copy", "block_index": key[0], "path": key[1],
+                "value": value,
+                "action": "Заменить служебную заглушку содержательным текстом для этой секции.",
+            })
         limit = spec.get("recommended_max_chars")
         if limit and len(value) > int(limit):
             ratio = len(value) / int(limit)

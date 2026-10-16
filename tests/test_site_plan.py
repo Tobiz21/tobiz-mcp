@@ -263,6 +263,39 @@ def test_recipe_preflight_accepts_supported_claim_and_complete_structure():
     assert result['claims']['unsupported'] == 0
 
 
+def test_recipe_preflight_blocks_text_placeholders_in_quality_mode():
+    blueprint = {'recipe': {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/title', 'kind': 'text',
+        'role': 'section_title', 'current': 'Старый заголовок',
+    }]}}
+    plan = {'plan_id': 'copy', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/title', 'value': 'Заголовок',
+    }]}
+    result = site_plan.validate_recipe({}, plan, blueprint, recipe)
+    assert result['ready_for_build'] is False
+    assert 'placeholder_recipe_copy' in {item['code'] for item in result['blockers']}
+
+
+def test_recipe_preflight_warns_about_text_placeholder_in_prototype():
+    blueprint = {'recipe': {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/title', 'kind': 'text',
+        'role': 'section_title', 'current': 'Старый заголовок',
+    }]}}
+    plan = {'plan_id': 'copy', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/title', 'value': '<p>Lorem ipsum dolor sit amet</p>',
+    }]}
+    result = site_plan.validate_recipe(
+        {'allow_placeholders': True}, plan, blueprint, recipe)
+    issue = next(item for item in result['issues']
+                 if item['code'] == 'placeholder_recipe_copy')
+    assert issue['priority'] == 'improve'
+    assert result['ready_for_build'] is True
+
+
 def test_media_preflight_accepts_complete_high_resolution_assignment():
     plan = {'plan_id': 'media-plan'}
     blueprint = {'photo_slots': [{
