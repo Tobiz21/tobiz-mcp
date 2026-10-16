@@ -76,6 +76,7 @@ class FakeService:
             "bounded_parallel_template_preflight",
             "design_template_candidate_discovery",
             "evidence_first_brief_gate",
+            "goal_specific_architecture_gate",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

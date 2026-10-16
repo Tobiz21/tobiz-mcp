@@ -102,6 +102,29 @@ def test_brief_readiness_accepts_one_real_value_in_nested_contact():
     assert result['ready_for_quality_build'] is True
 
 
+def test_architecture_readiness_requires_goal_sections_and_trust_layers():
+    result = site_plan.architecture_readiness({
+        'score': 5.5,
+        'present_roles': ['hero', 'programs', 'cta', 'contact'],
+    }, 'education')
+    assert result['ready'] is False
+    assert result['missing_critical_roles'] == ['expert']
+    assert result['trust']['sufficient'] is False
+    assert {item['code'] for item in result['blockers']} == {
+        'critical_sections_missing', 'trust_layers_missing',
+        'composition_below_quality_target'}
+
+
+def test_architecture_readiness_accepts_complete_education_story():
+    result = site_plan.architecture_readiness({
+        'score': 8.2,
+        'present_roles': [
+            'hero', 'programs', 'benefits', 'process', 'expert', 'proof', 'cta', 'contact'],
+    }, 'education')
+    assert result['ready'] is True
+    assert result['blockers'] == []
+
+
 def test_plan_comparison_detects_structure_and_role_drift():
     source = draft()
     plan = {'plan_id': 'x', 'sections': [
@@ -199,6 +222,11 @@ def test_unified_preflight_accepts_complete_quality_package():
     selection, selected = design.select_native(brief)
     blueprint = compact_blueprint(passport(source), content_map(source))
     plan = site_plan.build(brief, selection, selected, blueprint, source)
+    plan['architecture_readiness'] = site_plan.architecture_readiness({
+        'score': 8.2,
+        'present_roles': [
+            'hero', 'programs', 'benefits', 'process', 'expert', 'proof', 'cta', 'contact'],
+    }, 'education')
     recipe = {'types': ['1154', '306'], 'slots': [
         {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.'},
         {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},

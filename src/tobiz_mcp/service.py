@@ -1700,6 +1700,7 @@ class Service:
                 "bounded_parallel_template_preflight",
                 "design_template_candidate_discovery",
                 "evidence_first_brief_gate",
+                "goal_specific_architecture_gate",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

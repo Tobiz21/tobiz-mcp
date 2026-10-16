@@ -70,7 +70,8 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
-    "tobiz_plan_site", "tobiz_validate_brief", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
+    "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
+    "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_site_package_status",
@@ -173,7 +174,7 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     async def select_available_with_feedback(
             brief: dict[str, Any], top_k: int = 3,
-            max_flex_share: float | None = None
+            max_flex_share: float | None = None, goal: str | None = None,
             ) -> tuple[dict[str, Any], dict[str, Any], Any, dict[str, Any]]:
         selection = select_with_feedback(brief, top_k=len(effective_templates()))
         ranked = [selection["recommended"], *selection["alternatives"]]
@@ -195,7 +196,10 @@ def register(mcp: Any, service: Service) -> list[str]:
                         "id": candidate["id"], "code": "source_unavailable_or_stale",
                         "error": str(exc),
                     }
-            return "accepted", (candidate, draft, passport)
+            resolved_goal = goal or site_plan_domain.infer_goal(brief)
+            story = composition_domain.analyze(draft, resolved_goal)
+            architecture = site_plan_domain.architecture_readiness(story, resolved_goal)
+            return "accepted", (candidate, draft, passport, architecture)
 
         inspected = await asyncio.gather(*(inspect_candidate(candidate) for candidate in ranked))
         accepted = [value for status, value in inspected if status == "accepted"]
@@ -205,7 +209,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                 errors.NOT_FOUND, "В текущем аккаунте нет доступного проверенного шаблона",
                 "Зарегистрируйте страницу через tobiz_register_design_template",
                 raw={"code": "no_available_design_template", "rejected": rejected})
-        selected, draft, passport = accepted[0]
+        accepted.sort(key=lambda item: not item[3]["ready"])
+        selected, draft, passport, architecture = accepted[0]
         available_items = [item[0] for item in accepted]
         bounded = max(1, min(int(top_k), len(available_items)))
         resolved = {**selection, "recommended": selected,
@@ -213,7 +218,11 @@ def register(mcp: Any, service: Service) -> list[str]:
                     "unavailable_sources": rejected,
                     "availability_checked": True,
                     "availability_checked_count": len(ranked),
-                    "availability_concurrency": min(3, len(ranked))}
+                    "availability_concurrency": min(3, len(ranked)),
+                    "architecture_checked": True,
+                    "architecture_ready": architecture["ready"],
+                    "architecture_incomplete_sources": [
+                        item[0]["id"] for item in accepted if item[3]["ready"] is False]}
         return resolved, selected, draft, passport
 
     def ensure_template_current(selected: dict[str, Any], draft: Any) -> dict[str, Any]:
@@ -1359,7 +1368,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
         try:
             selection, selected, source_draft, template_passport = (
-                await select_available_with_feedback(brief, top_k=9, max_flex_share=0.3))
+                await select_available_with_feedback(
+                    brief, top_k=9, max_flex_share=0.3, goal=goal or None))
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
         blueprint = content_domain.compact_blueprint(
@@ -1382,6 +1392,23 @@ def register(mcp: Any, service: Service) -> list[str]:
             return site_plan_domain.brief_readiness(brief, goal or None)
         except ValueError as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+
+    @tool("tobiz_validate_site_architecture", "Select an available verified native template and "
+          "check whether its locked structure can fully explain the offer and establish trust before "
+          "a page is created. Requires critical goal-specific sections, enough trust layers and a "
+          "composition score of at least 7/10. Read-only; recommends another template instead of code.")
+    async def tobiz_validate_site_architecture(brief: dict[str, Any],
+                                                goal: str = "") -> dict[str, Any]:
+        plan = await tobiz_plan_site(brief, goal)
+        return {
+            "plan_id": plan["plan_id"],
+            "template": plan["template"],
+            "selection": {
+                "architecture_checked": True,
+                "alternatives": plan.get("alternatives") or [],
+            },
+            "architecture": plan["architecture_readiness"],
+        }
 
     @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "
           "TOBIZ site before writing text. Selects and locks the same installed template as tobiz_plan_site, "

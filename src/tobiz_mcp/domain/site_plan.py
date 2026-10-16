@@ -24,6 +24,18 @@ SHOT_ROLE_BY_SECTION = {
     "offer": "interior", "catalog": "details", "programs": "process_or_game",
 }
 
+CRITICAL_ARCHITECTURE = {
+    "lead_generation": ("hero", "offer", "cta", "contact"),
+    "education": ("hero", "programs", "expert", "cta", "contact"),
+    "ecommerce": ("hero", "catalog", "delivery", "cta", "contact"),
+}
+
+TRUST_ARCHITECTURE = {
+    "lead_generation": (("process", "expert", "proof", "contact"), 3),
+    "education": (("process", "expert", "proof", "contact"), 3),
+    "ecommerce": (("delivery", "proof", "contact"), 2),
+}
+
 
 def safe_system_title(value: str, fallback: str = "Новая страница") -> str:
     """Return a TOBIZ panel-safe title without changing visible or SEO copy."""
@@ -226,6 +238,57 @@ def infer_goal(brief: dict[str, Any]) -> str:
     return "lead_generation"
 
 
+def architecture_readiness(story: dict[str, Any], goal: str) -> dict[str, Any]:
+    """Judge whether a locked native structure can support a complete, trustworthy page."""
+    if goal not in CRITICAL_ARCHITECTURE:
+        raise ValueError(f"Unknown site goal: {goal}")
+    present = set(story.get("present_roles") or [])
+    critical = list(CRITICAL_ARCHITECTURE[goal])
+    trust_roles, trust_minimum = TRUST_ARCHITECTURE[goal]
+    missing_critical = [role for role in critical if role not in present]
+    trust_present = [role for role in trust_roles if role in present]
+    missing_trust = [role for role in trust_roles if role not in present]
+    score = float(story.get("score") or 0)
+    blockers = []
+    if missing_critical:
+        blockers.append({
+            "code": "critical_sections_missing",
+            "roles": missing_critical,
+            "action": "Выбрать другой проверенный шаблон с нужными штатными секциями.",
+        })
+    if len(trust_present) < trust_minimum:
+        blockers.append({
+            "code": "trust_layers_missing",
+            "present": trust_present,
+            "missing": missing_trust,
+            "required_count": trust_minimum,
+            "action": "Выбрать шаблон, где доверие раскрывается процессом, экспертом и доказательствами.",
+        })
+    if score < 7:
+        blockers.append({
+            "code": "composition_below_quality_target",
+            "score": score,
+            "target": 7.0,
+            "action": "Использовать структурно более полный шаблон без добавления самописных секций.",
+        })
+    return {
+        "goal": goal,
+        "ready": not blockers,
+        "score": score,
+        "target": 7.0,
+        "present_roles": sorted(present),
+        "missing_critical_roles": missing_critical,
+        "trust": {
+            "present": trust_present,
+            "missing": missing_trust,
+            "required_count": trust_minimum,
+            "sufficient": len(trust_present) >= trust_minimum,
+        },
+        "blockers": blockers,
+        "rule": "Если структура не готова, выбрать другой штатный шаблон, а не достраивать ее кодом.",
+    }
+
+
 def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, Any],
           blueprint: dict[str, Any], draft, goal: str | None = None) -> dict[str, Any]:
     goal = goal or infer_goal(brief)
@@ -290,6 +353,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
     }
     plan["content_brief"] = compile_content_brief(brief, plan)
     plan["brief_readiness"] = brief_readiness(brief, goal)
+    plan["architecture_readiness"] = architecture_readiness(story, goal)
     return plan
 
 
@@ -502,6 +566,14 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "question": item["question"],
             "action": "Получить подтвержденный факт от клиента или включить режим прототипа.",
         })
+    architecture = plan.get("architecture_readiness") or {}
+    if architecture and not architecture.get("ready"):
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix",
+            "code": "template_architecture_incomplete",
+            "details": architecture.get("blockers") or [],
+            "action": "Выбрать другой проверенный шаблон; не добавлять случайные или самописные блоки.",
+        })
     if blueprint.get("photo_slots") and media_result is None:
         issues.append({
             "priority": "improve" if draft_mode else "must_fix",
@@ -558,7 +630,8 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
     return {
         "plan_id": plan.get("plan_id"), "mode": "prototype" if draft_mode else "quality",
         "ready_for_build": not blockers, "content": content_result, "media": media_result,
-        "brief_readiness": readiness, "seo": {"provided": bool(seo_values)},
+        "brief_readiness": readiness, "architecture_readiness": architecture,
+        "seo": {"provided": bool(seo_values)},
         "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
     }

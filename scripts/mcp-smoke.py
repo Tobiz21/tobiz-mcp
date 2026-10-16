@@ -28,6 +28,7 @@ REQUIRED_TOOLS = {
     "tobiz_audit_images",
     "tobiz_plan_site",
     "tobiz_validate_brief",
+    "tobiz_validate_site_architecture",
     "tobiz_compile_site_content",
     "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe",
