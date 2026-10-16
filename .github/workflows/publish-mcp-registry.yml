@@ -24,4 +24,18 @@ jobs:
       - name: Authenticate with GitHub OIDC
         run: ./mcp-publisher login github-oidc
       - name: Publish server metadata
-        run: ./mcp-publisher publish server.json
+        shell: bash
+        run: |
+          for attempt in {1..20}; do
+            if ./mcp-publisher publish server.json; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 20 ]; then
+              echo "MCP Registry publication failed after $attempt attempts."
+              exit 1
+            fi
+
+            echo "Package is not available to the registry yet; retrying in 15 seconds ($attempt/20)."
+            sleep 15
+          done
