@@ -423,6 +423,8 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     assert 'optimistic_site_package_concurrency' in result['features']
     assert 'verified_image_upload_metadata' in result['features']
     assert 'post_build_plan_conformance' in result['features']
+    assert 'safe_native_block_reuse' in result['features']
+    assert 'native_flex_inspection_and_editing' in result['features']
 
 
 @pytest.mark.parametrize('path', ['/columns', '/missing', '/styles/title', '/html'])

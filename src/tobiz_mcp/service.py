@@ -1602,6 +1602,8 @@ class Service:
                 "versioned_site_package_checkpoints",
                 "optimistic_site_package_concurrency",
                 "post_build_plan_conformance",
+                "safe_native_block_reuse",
+                "native_flex_inspection_and_editing",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

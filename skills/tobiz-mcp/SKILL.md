@@ -56,6 +56,8 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
    `tobiz_editor_roundtrip_check`. HTML/cache Flex формирует штатный рендерер TOBIZ, не агент.
 5. Для каждого позиционированного элемента задай мобильную геометрию `xs` или `xxs`; не допускай
    наложений и CTA меньше 44x44px.
+6. Чтобы повторить удачный Flex или обычный блок, используй `tobiz_copy_native_block`, а не собирай
+   его заново. Сначала получи preview и `expected_target_hash`, затем примени и сохрани страницу.
 
 ## Безопасный протокол сохранения
 

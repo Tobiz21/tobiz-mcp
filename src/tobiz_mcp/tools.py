@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import json
 import time
@@ -727,6 +728,82 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "changed_fields": changed, "validation": validation,
                 "change_hash": draft.change_hash(),
                 "next_action": "tobiz_save_page" if apply else "repeat_with_apply_true"}
+
+    @tool("tobiz_copy_native_block", "Copy one existing native TOBIZ block unchanged to another "
+          "page or project. Preview is the default. Apply requires the current target draft hash. "
+          "Use this to reuse proven layouts and Flex compositions without reconstructing them or "
+          "writing custom HTML/CSS/JS. The copied block remains pending until tobiz_save_page.")
+    async def tobiz_copy_native_block(source_project_id: Id | None = None,
+                                      source_page_id: Id = "", source_block_id: Id = "",
+                                      target_project_id: Id | None = None,
+                                      target_page_id: Id = "", after_block_id: Id = "",
+                                      expected_target_hash: str = "",
+                                      apply: bool = False) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        source_project_id, _ = await service.resolve_page(source_project_id, source_page_id)
+        target_project_id, _ = await service.resolve_page(target_project_id, target_page_id)
+        source_draft = await service.draft(source_project_id, source_page_id)
+        target_draft = await service.draft(target_project_id, target_page_id)
+        source = source_draft.blocks.get(str(source_block_id))
+        if source is None or source.deleted:
+            raise errors.TobizError(errors.NOT_FOUND,
+                                    f"Исходный блок {source_block_id} не найден")
+        if after_block_id and str(after_block_id) not in target_draft.order:
+            raise errors.TobizError(errors.NOT_FOUND,
+                                    f"Целевой блок {after_block_id} не найден",
+                                    "Перечитайте целевую страницу через tobiz_page_summary")
+        block_type = await service.type_or_raise(target_project_id, source.type_id)
+        if not getattr(block_type, "has_template", True):
+            raise errors.TobizError(errors.TEMPLATE_UNAVAILABLE,
+                                    f"Тип {source.type_id} нельзя отрендерить в целевом проекте")
+        validation = flex_domain.validate(source.values) if source.type_id == "1600" else None
+        if validation and validation["blockers"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Исходный Flex не прошел адаптивную проверку",
+                                    "Исправьте исходный блок перед копированием", raw=validation)
+        current_hash = target_draft.change_hash()
+        plan = {
+            "source": {"project_id": source_project_id, "page_id": str(source_page_id),
+                       "block_id": source.block_id, "type_id": source.type_id},
+            "target": {"project_id": target_project_id, "page_id": str(target_page_id),
+                       "after_block_id": str(after_block_id) or None,
+                       "change_hash": current_hash},
+            "flex_validation": validation,
+        }
+        if not apply:
+            return {"preview": True, "can_apply": True, "plan": plan,
+                    "next_action": "repeat_with_apply_true_and_expected_target_hash"}
+        if expected_target_hash != current_hash:
+            raise errors.TobizError(errors.CONFLICT,
+                                    "Целевая страница изменилась после предпросмотра",
+                                    "Повторите предпросмотр и копирование с новым hash")
+        envelope = await service.client.editor_ajax(
+            "CreateNewBlock", service.config.lp_base(target_project_id), target_page_id,
+            rep_id=target_page_id, type_id=source.type_id)
+        if not envelope.ok:
+            raise errors.TobizError(errors.SAVE_FAILED,
+                                    "TOBIZ не создал целевой блок",
+                                    "Повторите попытку; исходный блок не изменен")
+        created = envelope.payload.get("respons")
+        block_id = ""
+        if isinstance(created, str):
+            try:
+                block_id = str(json.loads(created).get("block_id") or "")
+            except (TypeError, ValueError):
+                block_id = ""
+        if not block_id:
+            raise errors.TobizError(errors.SAVE_FAILED,
+                                    "TOBIZ не вернул block_id целевого блока",
+                                    raw=envelope.raw_text[:300])
+        copied = target_draft.add_created(
+            block_id, source.type_id, copy.deepcopy(source.values), str(after_block_id) or None)
+        copied.changed_paths = ["native_block_copy"]
+        return {"preview": False, "copied": True, "block_id": copied.block_id,
+                "type_id": copied.type_id, "sort_id": copied.sort_id,
+                "source": plan["source"], "pending_save": True,
+                "change_hash": target_draft.change_hash(),
+                "next_action": "tobiz_save_page"}
 
     @tool("tobiz_page_content", "Read all editable content in one call with a draft hash. Does not change layout.")
     async def tobiz_page_content(project_id: Id | None = None, page_id: Id = "") -> dict[str, Any]:
