@@ -389,6 +389,16 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
             })
             has_button = bool(submit_labels)
             has_labeled_button = any(submit_labels)
+            unlabeled_fields = []
+            for index, (item, role) in enumerate(zip(controls, roles)):
+                if role in {"button", "hidden", "captcha"}:
+                    continue
+                title = str(item.get("title") or "").strip()
+                placeholder = str(item.get("placeholder") or "").strip()
+                title_hidden = str(item.get("title_hide") or "").strip().lower() in {
+                    "1", "true", "yes", "on"}
+                if (not title or title_hidden) and not placeholder:
+                    unlabeled_fields.append({"index": index, "role": role})
             mandatory_fields = [
                 role for item, role in zip(controls, roles)
                 if role not in {"button", "unknown"}
@@ -406,11 +416,13 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                 "has_button": has_button,
                 "has_labeled_button": has_labeled_button,
                 "duplicate_fields": duplicate_fields,
+                "unlabeled_fields": unlabeled_fields,
                 "mandatory_fields": mandatory_fields,
                 "has_required_contact": has_required_contact,
                 "name_before_phone": (name_index >= 0 and phone_index >= 0
                                       and name_index < phone_index),
                 "matches_contract": (not missing and has_labeled_button and not duplicate_fields
+                                     and not unlabeled_fields
                                      and has_required_contact
                                      and ("phone" not in required or name_index < phone_index)),
             })
@@ -453,6 +465,14 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                        "fields": item["duplicate_fields"]} for item in duplicate_forms],
             "action": "Оставить каждое смысловое поле в штатной форме один раз.",
         })
+    unlabeled_forms = [item for item in forms if item["unlabeled_fields"]]
+    if unlabeled_forms:
+        blockers.append({
+            "code": "form_field_unlabeled",
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "fields": item["unlabeled_fields"]} for item in unlabeled_forms],
+            "action": "Задать видимый заголовок или placeholder каждому полю штатной формы.",
+        })
     optional_contact_forms = [
         item for item in forms
         if not item["missing_required_fields"] and not item["has_required_contact"]
@@ -472,7 +492,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         "matching_forms": len(matching),
         "blockers": blockers,
         "rule": ("Использовать штатную форму; поле «Имя» идет перед «Телефоном», "
-                 "поля не дублируются, кнопка имеет видимую подпись, а контакт обязателен."),
+                 "поля подписаны и не дублируются, кнопка видима, а контакт обязателен."),
     }
 
 

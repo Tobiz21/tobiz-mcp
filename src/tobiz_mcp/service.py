@@ -1720,6 +1720,7 @@ class Service:
                 "complete_native_form_submission_gate",
                 "required_primary_cta_recipe_slot",
                 "required_contact_field_gate",
+                "labeled_native_form_field_gate",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

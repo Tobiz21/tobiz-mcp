@@ -9,7 +9,8 @@ def draft():
     return Draft('1', '2', blocks={
         '10': DraftBlock('10', '1154', {'title': 'Курс математики', 'bg_image': 'hero.jpg'}),
         '11': DraftBlock('11', '306', {'title': 'Записаться', 'form1': [
-            {'type': 'name'}, {'type': 'phone', 'required': 1},
+            {'type': 'name', 'title': 'Ваше имя'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
             {'type': 'btn', 'title': 'Отправить'},
         ]}),
     }, order=['10', '11'])
@@ -263,6 +264,34 @@ def test_conversion_readiness_requires_contactability():
     assert result['forms'][0]['has_required_contact'] is False
     assert 'contact_field_not_required' in {
         item['code'] for item in result['blockers']}
+
+
+def test_conversion_readiness_rejects_unlabeled_visible_field():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': '', 'placeholder': ''},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
+            {'type': 'btn', 'title': 'Оставить заявку'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is False
+    assert result['forms'][0]['unlabeled_fields'] == [{'index': 0, 'role': 'text'}]
+    assert 'form_field_unlabeled' in {item['code'] for item in result['blockers']}
+
+
+def test_conversion_readiness_accepts_placeholder_when_title_is_hidden():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': 'Ваше имя', 'title_hide': 1,
+             'placeholder': 'Как к вам обращаться'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
+            {'type': 'btn', 'title': 'Оставить заявку'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is True
+    assert result['forms'][0]['unlabeled_fields'] == []
 
 
 def test_conversion_readiness_rejects_template_without_native_form():
