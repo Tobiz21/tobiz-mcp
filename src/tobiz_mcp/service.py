@@ -1729,6 +1729,7 @@ class Service:
                 "product_publication_quality_audit",
                 "article_product_preflight",
                 "multipage_project_quality_audit",
+                "four_workflow_control_scenarios",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,
