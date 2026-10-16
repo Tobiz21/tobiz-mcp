@@ -114,8 +114,26 @@ def validate(values: dict[str, Any]) -> dict[str, Any]:
                                    "code": "flex_elements_overlap", "mode": mode,
                                    "element_indexes": [left_index, right_index]})
     blockers = [item for item in issues if item["priority"] == "must_fix"]
+    schema_profile = {
+        "root_keys": sorted(str(key) for key in values),
+        "element_keys_by_type": {},
+        "style_keys_by_mode": {},
+    }
+    for element in items:
+        element_type = str(element.get("type") or element.get("type_id") or "unknown").lower()
+        current = schema_profile["element_keys_by_type"].setdefault(element_type, set())
+        current.update(str(key) for key in element)
+        for mode in MODES:
+            style = _mode_style(element, mode)
+            if style:
+                mode_keys = schema_profile["style_keys_by_mode"].setdefault(mode, set())
+                mode_keys.update(str(key) for key in style)
+    schema_profile["element_keys_by_type"] = {
+        key: sorted(value) for key, value in schema_profile["element_keys_by_type"].items()}
+    schema_profile["style_keys_by_mode"] = {
+        key: sorted(value) for key, value in schema_profile["style_keys_by_mode"].items()}
     return {
         "valid": not blockers, "element_count": len(items), "elements": inventory,
         "supported_types": sorted(SUPPORTED_TYPES), "responsive_modes": list(MODES),
-        "issues": issues, "blockers": blockers,
+        "schema_profile": schema_profile, "issues": issues, "blockers": blockers,
     }

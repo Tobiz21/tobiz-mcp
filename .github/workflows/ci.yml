@@ -29,6 +29,10 @@ jobs:
         run: npm ci --prefix renderer
       - name: Python tests
         run: python -m pytest -q
+      - name: Compile and dependency checks
+        run: |
+          python -m compileall -q src tests scripts
+          python -m pip check
       - name: Renderer tests
         run: npm test --prefix renderer
       - name: Build Python package

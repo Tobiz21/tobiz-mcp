@@ -102,5 +102,5 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_build_site_package',
             'tobiz_audit_claims',
             'tobiz_check_site_plan',
-            'tobiz_inspect_flex_block', 'tobiz_update_flex_block',
+            'tobiz_inspect_flex_block', 'tobiz_audit_flex_page', 'tobiz_update_flex_block',
             'tobiz_copy_native_block'} <= set(names)

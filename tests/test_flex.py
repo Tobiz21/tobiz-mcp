@@ -21,6 +21,8 @@ def test_valid_native_flex_model():
     assert result["valid"] is True
     assert result["element_count"] == 2
     assert result["blockers"] == []
+    assert result["schema_profile"]["element_keys_by_type"]["btn"] == ["id", "l", "type", "xs"]
+    assert result["schema_profile"]["style_keys_by_mode"]["xs"] == ["h", "w", "x", "y"]
 
 
 def test_positioned_element_requires_mobile_layout():

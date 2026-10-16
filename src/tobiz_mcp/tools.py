@@ -17,6 +17,7 @@ from .domain import claim_audit as claim_audit_domain
 from .domain import content as content_domain
 from .domain import composition as composition_domain
 from .domain import design_gate as design_gate_domain
+from .domain import dependencies as dependency_domain
 from .domain import image_audit as image_audit_domain
 from .domain import flex as flex_domain
 from .domain import site_plan as site_plan_domain
@@ -73,7 +74,7 @@ READ_TOOLS = {
     "tobiz_delete_site_package", "tobiz_list_site_package_revisions",
     "tobiz_restore_site_package_revision",
     "tobiz_audit_claims", "tobiz_check_site_plan",
-    "tobiz_inspect_flex_block",
+    "tobiz_inspect_flex_block", "tobiz_audit_flex_page",
 }
 
 
@@ -692,6 +693,23 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "validation": flex_domain.validate(block.values),
                 "flexblocks": block.values.get("flexblocks") or []}
 
+    @tool("tobiz_audit_flex_page", "Read every native Flex 1600 block on a page and return its "
+          "actual vendor schema profile, responsive modes and blockers. Use the profiles to build "
+          "a verified Flex corpus instead of guessing field names. Never changes the page.")
+    async def tobiz_audit_flex_page(project_id: Id | None = None,
+                                    page_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        blocks = []
+        for block_id in draft.order:
+            block = draft.blocks.get(block_id)
+            if block is not None and not block.deleted and block.type_id == "1600":
+                blocks.append({"block_id": block_id,
+                               "validation": flex_domain.validate(block.values)})
+        return {"project_id": project_id, "page_id": str(page_id),
+                "flex_blocks": blocks, "count": len(blocks),
+                "valid": all(item["validation"]["valid"] for item in blocks)}
+
     @tool("tobiz_update_flex_block", "Safely replace only the native flexblocks model of an existing "
           "TOBIZ type 1600 block. Preview is the default. Apply requires expected_hash from "
           "tobiz_inspect_flex_block and stages validated values; tobiz_save_page renders and stores "
@@ -762,6 +780,11 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Исходный Flex не прошел адаптивную проверку",
                                     "Исправьте исходный блок перед копированием", raw=validation)
+        dependencies = dependency_domain.copy_preflight(source.values, target_draft)
+        if dependencies["blockers"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Зависимости блока нельзя безопасно перенести",
+                                    "Исправьте blockers из dependency_preflight", raw=dependencies)
         current_hash = target_draft.change_hash()
         plan = {
             "source": {"project_id": source_project_id, "page_id": str(source_page_id),
@@ -770,6 +793,7 @@ def register(mcp: Any, service: Service) -> list[str]:
                        "after_block_id": str(after_block_id) or None,
                        "change_hash": current_hash},
             "flex_validation": validation,
+            "dependency_preflight": dependencies,
         }
         if not apply:
             return {"preview": True, "can_apply": True, "plan": plan,
@@ -799,9 +823,19 @@ def register(mcp: Any, service: Service) -> list[str]:
         copied = target_draft.add_created(
             block_id, source.type_id, copy.deepcopy(source.values), str(after_block_id) or None)
         copied.changed_paths = ["native_block_copy"]
+        audit_writer = getattr(service, "audit", None)
+        if audit_writer is not None:
+            await audit_writer("tobiz_copy_native_block", target_project_id,
+                               page_id=target_page_id, block_id=block_id,
+                               extra={"source_project_id": source_project_id,
+                                      "source_page_id": str(source_page_id),
+                                      "source_block_id": source.block_id,
+                                      "type_id": source.type_id})
         return {"preview": False, "copied": True, "block_id": copied.block_id,
                 "type_id": copied.type_id, "sort_id": copied.sort_id,
                 "source": plan["source"], "pending_save": True,
+                "created_on_server": True, "dependency_preflight": dependencies,
+                "rollback_action": "tobiz_delete_block then tobiz_save_page",
                 "change_hash": target_draft.change_hash(),
                 "next_action": "tobiz_save_page"}
 
@@ -1019,29 +1053,36 @@ def register(mcp: Any, service: Service) -> list[str]:
                                     "Не удалось однозначно определить созданную страницу")
         target_page_id = str(created[0]["page_id"])
         target_project = str(copied["new_project"])
-        target_draft = await service.draft(target_project, target_page_id, refresh=True)
-        prepared, first_changes, first_warnings = template_domain.prepare_template(
-            target_draft, content_domain.fingerprint(target_draft))
-        target_batch = content_domain.recipe_edits(prepared, recipe or {
-            "types": [prepared.blocks[bid].type_id for bid in prepared.order
-                      if not prepared.blocks[bid].deleted], "slots": []})
-        built, changed = content_domain.prepare(prepared, target_batch, replacement_image)
-        built, last_changes, last_warnings = template_domain.prepare_template(built)
-        service.drafts.put(built)
-        save_result = await service.save_page(target_project, target_page_id)
-
-        seo_result = await service.update_page(target_project, target_page_id, **seo_values) if seo_values else None
-        report = await service.inspect_page(target_project, target_page_id, screenshot=True,
-                                            viewports=viewports,
-                                            forbidden_terms=source_terms)
-        summary = audit_domain.compact(report)
-        return {"preview": False, "page": created[0], "plan": plan,
-                "changed_fields": len(changed),
-                "template_changes": first_changes + last_changes,
-                "warnings": first_warnings + last_warnings,
-                "save": save_result, "seo": seo_result, "audit": summary,
-                "quality_score": summary.get("quality_score"),
-                "fix_plan": summary.get("fix_plan", [])}
+        try:
+            target_draft = await service.draft(target_project, target_page_id, refresh=True)
+            prepared, first_changes, first_warnings = template_domain.prepare_template(
+                target_draft, content_domain.fingerprint(target_draft))
+            target_batch = content_domain.recipe_edits(prepared, recipe or {
+                "types": [prepared.blocks[bid].type_id for bid in prepared.order
+                          if not prepared.blocks[bid].deleted], "slots": []})
+            built, changed = content_domain.prepare(prepared, target_batch, replacement_image)
+            built, last_changes, last_warnings = template_domain.prepare_template(built)
+            service.drafts.put(built)
+            save_result = await service.save_page(target_project, target_page_id)
+            seo_result = (await service.update_page(target_project, target_page_id, **seo_values)
+                          if seo_values else None)
+            report = await service.inspect_page(target_project, target_page_id, screenshot=True,
+                                                viewports=viewports,
+                                                forbidden_terms=source_terms)
+            summary = audit_domain.compact(report)
+            return {"preview": False, "page": created[0], "plan": plan,
+                    "changed_fields": len(changed),
+                    "template_changes": first_changes + last_changes,
+                    "warnings": first_warnings + last_warnings,
+                    "save": save_result, "seo": seo_result, "audit": summary,
+                    "quality_score": summary.get("quality_score"),
+                    "fix_plan": summary.get("fix_plan", [])}
+        except Exception:
+            try:
+                await service.delete_page(target_project, target_page_id, confirm=True)
+            except Exception:  # noqa: BLE001 - preserve the original build failure
+                logger.exception("не удалось удалить частично созданную страницу %s", target_page_id)
+            raise
 
     @tool("tobiz_plan_site", "Create a deterministic native-first site plan before building. Selects "
           "an installed TOBIZ template, locks its block structure, assigns a purpose to each section, "
@@ -1969,15 +2010,18 @@ def register(mcp: Any, service: Service) -> list[str]:
             },
         }
 
-    @tool("tobiz_release_design_gate", "Run the mandatory final acceptance gate for a native TOBIZ "
-          "page. Combines rendered desktop/mobile quality, semantic composition, optional reference "
-          "fidelity and editor roundtrip safety into one ready/review/save_blocked verdict. Does not "
-          "change the site or submit forms.")
+    @tool("tobiz_release_design_gate", "Run the strict final acceptance gate for a native TOBIZ page. "
+          "A ready verdict requires desktop/tablet/mobile screenshots, a design reference, approved "
+          "brief for claim audit, editor roundtrip and explicit visual review confirmation. Missing "
+          "evidence blocks release. Does not change the site or submit forms.")
     async def tobiz_release_design_gate(
             project_id: Id | None = None, page_id: Id = "",
             goal: str = "lead_generation", source_terms: list[str] | None = None,
             reference_project_id: Id | None = None, reference_page_id: Id = "",
-            screenshots: bool = True, check_editor: bool = True) -> dict[str, Any]:
+            screenshots: bool = True, check_editor: bool = True,
+            brief: dict[str, Any] | None = None,
+            visual_review_approved: bool = False,
+            visual_review_notes: str = "") -> dict[str, Any]:
         if goal not in composition_domain.GOALS:
             raise errors.TobizError(
                 errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}",
@@ -2006,12 +2050,17 @@ def register(mcp: Any, service: Service) -> list[str]:
             reference_comparison = design_reference_domain.compare(
                 reference_recipe, target_recipe)
         roundtrip = await service.editor_roundtrip(project_id, page_id) if check_editor else None
+        claims = claim_audit_domain.analyze(draft, brief) if isinstance(brief, dict) else None
+        visual_review = ({"approved": True, "notes": visual_review_notes}
+                         if visual_review_approved and screenshots else None)
         gate = design_gate_domain.evaluate(
             audit, composition, reference_comparison, roundtrip,
-            has_unsaved_changes=draft.has_changes)
+            has_unsaved_changes=draft.has_changes, claims=claims,
+            require_complete=True, visual_review=visual_review)
         return {"gate": gate, "audit": audit, "composition": composition,
                 "reference_comparison": reference_comparison,
-                "editor_roundtrip": roundtrip}
+                "editor_roundtrip": roundtrip, "claims": claims,
+                "visual_review": visual_review}
 
     @tool("tobiz_audit_images", "Audit every rendered image on desktop and mobile. Detects broken "
           "or stretched files, insufficient source resolution, extreme cropping, repeated photos, "

@@ -62,10 +62,12 @@ class FakeService:
             "optimistic_site_package_concurrency",
             "verified_image_upload_metadata",
             "post_build_plan_conformance",
+            "safe_native_block_reuse",
+            "native_flex_inspection_and_editing",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")
-        return {"version": "0.9.0b2", "features": features}
+        return {"version": "0.9.0b3", "features": features}
 
 
 def test_release_passes_complete_strict_install(capsys) -> None:

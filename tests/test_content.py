@@ -383,7 +383,7 @@ def test_health_identifies_loaded_quality_features(tmp_path):
     with pytest.raises(StopIteration) as completed:
         service.health().send(None)
     result = completed.value.value
-    assert result['version'] == '0.9.0b2'
+    assert result['version'] == '0.9.0b3'
     assert 'button_surface_contrast_detection' in result['features']
     assert 'design_passport_selection' in result['features']
     assert 'editor_roundtrip_check' in result['features']
@@ -519,6 +519,35 @@ def test_build_from_template_previews_then_runs_one_save_and_audit():
     service.copy_page.assert_awaited_once()
     service.save_page.assert_awaited_once()
     service.inspect_page.assert_awaited_once()
+
+
+def test_build_from_template_removes_new_page_after_partial_failure():
+    source = sample()
+    target = copy.deepcopy(source)
+    target.project_id, target.page_id = '9', '10'
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False, dry_run=False), drafts=DraftStore(),
+        resolve_page=AsyncMock(side_effect=lambda project, page: (
+            str(project), SimpleNamespace(title='Template'))),
+        draft=AsyncMock(side_effect=lambda project, page, refresh=False: (
+            source if str(page) == '2' else target)),
+        copy_page=AsyncMock(return_value={
+            'new_project': '9', 'created': [{'page_id': '10', 'url': 'https://x'}]}),
+        save_page=AsyncMock(side_effect=TobizError('SAVE_FAILED', 'failed')),
+        update_page=AsyncMock(), inspect_page=AsyncMock(),
+        delete_page=AsyncMock(return_value={'deleted': '10'}),
+    )
+    functions = registered_functions(service)
+    recipe = {'types': ['130'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Built'}]}
+
+    result = finish(functions['tobiz_build_from_template'](
+        source_project_id='1', source_page_id='2', target_project_id='9',
+        title='New site', recipe=recipe, replacement_image='gray.png', apply=True))
+
+    assert result['ok'] is False
+    assert result['error']['code'] == 'SAVE_FAILED'
+    service.delete_page.assert_awaited_once_with('9', '10', confirm=True)
 
 
 def audit_report(*, overflow=False):

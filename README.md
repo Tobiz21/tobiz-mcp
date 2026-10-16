@@ -5,7 +5,7 @@ MCP-клиенту) читать и менять сайты — проекты, 
 
 Репозиторий: <https://github.com/Tobiz21/tobiz-mcp>
 
-Docker-образ: `ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2`
+Docker-образ: `ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.3`
 
 ## Короткая инструкция для ИИ
 
@@ -48,6 +48,16 @@ MCP считается готовым к эффективной работе, к
 затем `apply=true` с `expected_target_hash`, после чего один `tobiz_save_page`. Инструмент переносит
 штатные значения без реконструкции и отдельно проверяет Flex перед копированием.
 
+Финальная команда `tobiz_release_design_gate` работает строже обычного аудита: для `ready` нужны
+эталонная страница, бриф для проверки фактов, editor roundtrip и явное подтверждение визуального
+просмотра desktop/tablet/mobile-снимков. Отсутствующая проверка теперь является блокером, а не нулем,
+который незаметно исключается из среднего балла.
+
+Для реального контрактного контроля настрой GitHub secrets `TOBIZ_LIVE_TEST_EMAIL`,
+`TOBIZ_LIVE_TEST_PASSWORD` и variables `TOBIZ_LIVE_TEST_PROJECT_ID`, `TOBIZ_LIVE_TEST_PAGE_ID`.
+Workflow `TOBIZ live contract` еженедельно проверяет вход, каталог, vendor-render, editor roundtrip и
+публичную страницу в трех viewport без записи на сайт.
+
 ## Быстрый старт
 
 Поддерживаемый способ установки публичной бета-версии - Docker. Python wheel сам по себе не
@@ -63,8 +73,8 @@ docker run --rm -it --entrypoint tobiz-mcp-configure \
 После публикации образа локальную сборку можно заменить на:
 
 ```bash
-docker pull ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2
-docker tag ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.2 tobiz-mcp
+docker pull ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.3
+docker tag ghcr.io/tobiz21/tobiz-mcp:0.9.0-beta.3 tobiz-mcp
 ```
 
 Мастер скрыто запросит пароль, включит строгую изоляцию и разрешит MCP работать только с
@@ -195,6 +205,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_diagnose_interactions`, `tobiz_audit_page`, `tobiz_audit_summary` | формы, попапы, кнопки, ссылки, контраст, геометрия, остатки исходной тематики, JS-ошибки, изображения и объяснимая оценка качества из 10 |
 | `tobiz_add_block`, `tobiz_update_block`, `tobiz_delete_block`, `tobiz_move_block` | правки черновика |
 | `tobiz_inspect_flex_block`, `tobiz_update_flex_block` | безопасное чтение и изменение штатной модели Flex `1600` с проверкой desktop/mobile-геометрии, наложений и CTA; cache формируется рендерером TOBIZ при сохранении |
+| `tobiz_audit_flex_page` | инвентаризация всех Flex на странице и сбор фактических ключей vendor-схемы для проверенного корпуса |
 | `tobiz_copy_native_block` | точное повторное использование проверенного штатного блока между страницами и проектами с preview и защитой от конфликтов |
 | `tobiz_save_page` | запись блоков на сайт: рендер HTML, SaveBlocks, проверка вёрстки |
 | `tobiz_update_page` | правка параметров страницы (SEO, название, slug, og:image) — пишет сразу |

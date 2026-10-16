@@ -13,7 +13,9 @@ def evaluate(audit: dict[str, Any], composition: dict[str, Any],
              reference: dict[str, Any] | None = None,
              roundtrip: dict[str, Any] | None = None,
              *, has_unsaved_changes: bool = False,
-             claims: dict[str, Any] | None = None) -> dict[str, Any]:
+             claims: dict[str, Any] | None = None,
+             require_complete: bool = False,
+             visual_review: dict[str, Any] | None = None) -> dict[str, Any]:
     reference = reference or {}
     audit_score = float((audit.get("quality_score") or {}).get("overall", 0))
     composition_score = float(composition.get("score", 0))
@@ -54,6 +56,19 @@ def evaluate(audit: dict[str, Any], composition: dict[str, Any],
             "source": "draft", "code": "unsaved_draft_not_audited",
             "action": "Сохранить или сбросить черновик и повторить приемку публичной страницы.",
         })
+    if require_complete:
+        required = {
+            "design_reference": bool(reference),
+            "editor_roundtrip": roundtrip is not None,
+            "claim_integrity": claims is not None,
+            "visual_review": bool(visual_review and visual_review.get("approved") is True),
+        }
+        for check, passed in required.items():
+            if not passed:
+                blockers.append({
+                    "source": "release_contract", "code": f"required_{check}_missing",
+                    "action": "Выполнить обязательную проверку перед финальной выдачей сайта.",
+                })
 
     if blockers:
         verdict = "save_blocked"
@@ -74,6 +89,7 @@ def evaluate(audit: dict[str, Any], composition: dict[str, Any],
             "editor_roundtrip": None if roundtrip is None else bool(roundtrip.get("editor_safe")),
             "draft_saved": not has_unsaved_changes,
             "claim_integrity": None if claims is None else bool(claims.get("ready")),
+            "visual_review": None if visual_review is None else bool(visual_review.get("approved")),
         },
         "rule": "Выдавать сайт можно только при verdict=ready; исправления выполняются штатными блоками TOBIZ.",
     }
