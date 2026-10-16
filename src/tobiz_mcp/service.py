@@ -1642,6 +1642,7 @@ class Service:
                 "structured_design_feedback",
                 "feedback_informed_template_selection",
                 "design_feedback_regression_gate",
+                "enforced_design_passport_freshness",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -129,6 +129,27 @@ def library() -> dict[str, Any]:
     }
 
 
+def validate_passport(expected: dict[str, Any], draft: Any) -> dict[str, Any]:
+    """Compare a live native page with the immutable facts stored in its passport."""
+    visible = [block for block in draft.blocks.values() if not block.deleted]
+    flex_count = sum(str(block.type_id) == "1600" for block in visible)
+    actual = {
+        "blocks": len(visible),
+        "flex_share": round(flex_count / max(len(visible), 1), 3),
+    }
+    mismatches = []
+    if actual["blocks"] != int(expected["blocks"]):
+        mismatches.append({"field": "blocks", "expected": int(expected["blocks"]),
+                           "actual": actual["blocks"]})
+    if actual["flex_share"] != float(expected["flex_share"]):
+        mismatches.append({"field": "flex_share", "expected": float(expected["flex_share"]),
+                           "actual": actual["flex_share"]})
+    return {"valid": not mismatches, "template_id": expected.get("id"),
+            "expected": {"blocks": int(expected["blocks"]),
+                         "flex_share": float(expected["flex_share"])},
+            "actual": actual, "mismatches": mismatches}
+
+
 def _rank(item: dict[str, Any], brief: dict[str, Any], brief_concepts: set[str]) -> dict[str, Any]:
     score, reasons, risks = 0, [], []
     overlap = sorted(brief_concepts & set(item["concepts"]))

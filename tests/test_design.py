@@ -15,6 +15,22 @@ def test_library_contains_verified_installed_sources_and_references():
     assert result['rules']['max_flex_share'] == .3
 
 
+def test_design_passport_detects_native_structure_drift():
+    draft = Draft(project_id="1", page_id="2")
+    draft.blocks = {
+        "1": DraftBlock("1", "101", {}),
+        "2": DraftBlock("2", "1600", {}),
+        "3": DraftBlock("3", "226", {}, deleted=True),
+    }
+    valid = design.validate_passport(
+        {"id": "sample", "blocks": 2, "flex_share": .5}, draft)
+    assert valid["valid"] is True
+    drift = design.validate_passport(
+        {"id": "sample", "blocks": 3, "flex_share": 0}, draft)
+    assert drift["valid"] is False
+    assert {item["field"] for item in drift["mismatches"]} == {"blocks", "flex_share"}
+
+
 def test_regional_drilling_prefers_long_native_construction_template():
     result = design.select({
         'industry': 'Бурение скважин в Чувашии',

@@ -68,6 +68,7 @@ class FakeService:
             "structured_design_feedback",
             "feedback_informed_template_selection",
             "design_feedback_regression_gate",
+            "enforced_design_passport_freshness",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

@@ -163,6 +163,17 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise ValueError(f"no verified template with Flex share <= {max_flex_share}")
         return selection, eligible[0]
 
+    def ensure_template_current(selected: dict[str, Any], draft: Any) -> dict[str, Any]:
+        passport = design_domain.validate_passport(selected, draft)
+        if not passport["valid"]:
+            raise errors.TobizError(
+                errors.CONFLICT,
+                f"Паспорт шаблона {selected.get('id')} устарел",
+                "Запустите tobiz_validate_design_library и обновите паспорт после ручной проверки эталона",
+                raw={"code": "design_passport_drift", **passport},
+            )
+        return passport
+
     # --- служебные ---
 
     @tool("tobiz_login",
@@ -214,12 +225,11 @@ def register(mcp: Any, service: Service) -> list[str]:
             try:
                 project_id, _ = await service.resolve_page(expected["project_id"], expected["page_id"])
                 draft = await service.draft(project_id, expected["page_id"])
-                visible = [block for block in draft.blocks.values() if not block.deleted]
-                flex_count = sum(block.type_id == "1600" for block in visible)
-                item.update({"available": True, "actual_blocks": len(visible),
-                             "actual_flex_share": round(flex_count / max(len(visible), 1), 3)})
-                item["drift"] = (item["actual_blocks"] != item["expected_blocks"] or
-                                 item["actual_flex_share"] != item["expected_flex_share"])
+                passport = design_domain.validate_passport(expected, draft)
+                item.update({"available": True, "actual_blocks": passport["actual"]["blocks"],
+                             "actual_flex_share": passport["actual"]["flex_share"],
+                             "mismatches": passport["mismatches"]})
+                item["drift"] = not passport["valid"]
             except Exception as exc:  # one unavailable reference must not hide the rest
                 item.update({"available": False, "drift": True, "error": str(exc)})
             results.append(item)
@@ -1180,10 +1190,13 @@ def register(mcp: Any, service: Service) -> list[str]:
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        template_passport = ensure_template_current(selected, source_draft)
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
-        return site_plan_domain.build(
+        plan = site_plan_domain.build(
             brief, selection, selected, blueprint, source_draft, goal or None)
+        plan["template_passport"] = template_passport
+        return plan
 
     @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "
           "TOBIZ site before writing text. Selects and locks the same installed template as tobiz_plan_site, "
@@ -1643,10 +1656,12 @@ def register(mcp: Any, service: Service) -> list[str]:
                      "source_project_id": selected["project_id"]},
             )
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        template_passport = ensure_template_current(selected, source_draft)
         source_passport = content_domain.passport(source_draft)
         blueprint = content_domain.compact_blueprint(
             source_passport, content_domain.content_map(source_draft))
         site_plan = site_plan_domain.build(brief, selection, selected, blueprint, source_draft)
+        site_plan["template_passport"] = template_passport
         if plan_id and plan_id != site_plan["plan_id"]:
             raise errors.TobizError(
                 errors.CONFLICT, "plan_id не соответствует выбранному шаблону",
