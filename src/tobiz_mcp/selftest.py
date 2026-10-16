@@ -173,6 +173,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "required_contact_field_gate",
         "labeled_native_form_field_gate",
         "brief_aligned_required_form_fields",
+        "nested_native_form_discovery",
         "one_call_site_workflow_start",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

@@ -325,6 +325,23 @@ def test_conversion_readiness_allows_optional_unrequested_field():
     assert result['forms'][0]['unexpected_mandatory_fields'] == []
 
 
+def test_conversion_readiness_discovers_native_form_nested_in_flex():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '1600', {'flexblocks': [{
+            'id': 'lead', 'type': 'form', 'content': {'form1': [
+                {'type': 'text', 'title': 'Ваше имя'},
+                {'type': 'phone', 'title': 'Телефон', 'required': 1},
+                {'type': 'btn', 'title': 'Оставить заявку'},
+            ]},
+        }]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is True
+    assert result['matching_forms'] == 1
+    assert result['forms'][0]['form_key'] == 'form1'
+    assert result['forms'][0]['form_path'] == '/flexblocks/0/content/form1'
+
+
 def test_conversion_readiness_rejects_template_without_native_form():
     source = Draft('1', '2', blocks={
         '1': DraftBlock('1', '1154', {'title': 'Первый экран'}),

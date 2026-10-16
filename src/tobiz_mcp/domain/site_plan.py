@@ -362,6 +362,19 @@ def _requested_form_fields(brief: dict[str, Any]) -> list[str]:
     return normalized
 
 
+def _native_form_arrays(value: Any, path: str = ""):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            pointer = path + "/" + str(key).replace("~", "~0").replace("/", "~1")
+            if re.fullmatch(r"form\d+", str(key)) and isinstance(child, list) and child:
+                yield pointer, str(key), child
+            elif key not in {"cache", "html", "code", "css", "styles"}:
+                yield from _native_form_arrays(child, pointer)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _native_form_arrays(child, path + f"/{index}")
+
+
 def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
     """Validate native lead forms against the requested conversion contract."""
     required = _requested_form_fields(brief)
@@ -371,9 +384,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         block = draft.blocks[block_id]
         if block.deleted:
             continue
-        for key, value in block.values.items():
-            if not re.fullmatch(r"form\d+", str(key)) or not isinstance(value, list) or not value:
-                continue
+        for form_path, key, value in _native_form_arrays(block.values):
             controls = [item for item in value if isinstance(item, dict)]
             roles = [_form_field_role(item) for item in controls]
             missing = [role for role in required if role not in roles]
@@ -414,6 +425,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                 "block_index": position,
                 "block_id": str(block_id),
                 "form_key": str(key),
+                "form_path": form_path,
                 "fields": roles,
                 "missing_required_fields": missing,
                 "has_button": has_button,
@@ -450,7 +462,8 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
     if invalid_lead_forms:
         blockers.append({
             "code": "lead_form_name_order_invalid",
-            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"]}
                       for item in invalid_lead_forms],
             "action": "Поставить поле «Имя» перед «Телефоном» штатной настройкой формы.",
         })
@@ -458,7 +471,8 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
     if unusable_forms:
         blockers.append({
             "code": "form_submit_missing",
-            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"]}
                       for item in unusable_forms],
             "action": "Добавить штатную видимую кнопку отправки с понятной подписью.",
         })
@@ -467,6 +481,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         blockers.append({
             "code": "duplicate_form_fields",
             "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"],
                        "fields": item["duplicate_fields"]} for item in duplicate_forms],
             "action": "Оставить каждое смысловое поле в штатной форме один раз.",
         })
@@ -475,6 +490,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         blockers.append({
             "code": "form_field_unlabeled",
             "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"],
                        "fields": item["unlabeled_fields"]} for item in unlabeled_forms],
             "action": "Задать видимый заголовок или placeholder каждому полю штатной формы.",
         })
@@ -486,7 +502,8 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         blockers.append({
             "code": "contact_field_not_required",
             "required_contacts": required_contacts,
-            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"]}
                       for item in optional_contact_forms],
             "action": "Сделать телефон или email обязательным штатной настройкой поля формы.",
         })
@@ -496,6 +513,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
             "code": "unexpected_required_form_fields",
             "required_fields": required,
             "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "form_path": item["form_path"],
                        "fields": item["unexpected_mandatory_fields"]}
                       for item in overreaching_forms],
             "action": "Убрать обязательность у полей, которых нет в согласованном брифе.",

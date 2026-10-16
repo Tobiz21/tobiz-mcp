@@ -98,6 +98,7 @@ class FakeService:
             "required_contact_field_gate",
             "labeled_native_form_field_gate",
             "brief_aligned_required_form_fields",
+            "nested_native_form_discovery",
             "one_call_site_workflow_start",
         ]
         if self.missing_feature:
