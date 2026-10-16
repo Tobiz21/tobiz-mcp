@@ -189,7 +189,9 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_register_design_template', 'tobiz_discover_design_candidates'} <= set(names)
     assert {'tobiz_preflight_article', 'tobiz_audit_article',
             'tobiz_preflight_product', 'tobiz_audit_product',
-            'tobiz_audit_project', 'tobiz_plan_multipage_site'} <= set(names)
+            'tobiz_audit_project', 'tobiz_plan_multipage_site',
+            'tobiz_prepare_multipage_package',
+            'tobiz_multipage_package_status'} <= set(names)
 
 
 def test_start_site_returns_questions_before_accessing_tobiz():

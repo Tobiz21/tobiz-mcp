@@ -131,3 +131,52 @@ def combine(manifest: dict[str, Any], page_plans: list[dict[str, Any]]) -> dict[
             "ready_for_packages": not blockers, "blockers": blockers,
             "next_action": "tobiz_prepare_multipage_package" if not blockers
                            else "fix_multipage_plan_blockers"}
+
+
+def package(plan: dict[str, Any], page_packages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Wrap independently editable native page packages in one immutable site envelope."""
+    expected = [str(item.get("key")) for item in plan.get("pages") or []]
+    actual = [str(item.get("key")) for item in page_packages]
+    blockers: list[dict[str, Any]] = []
+    if actual != expected:
+        _issue(blockers, "multipage_package_order_mismatch",
+               "Подготовить по одному пакету в порядке карты страниц.",
+               expected=expected, actual=actual)
+    for item in page_packages:
+        nested = item.get("package") if isinstance(item.get("package"), dict) else {}
+        if not nested.get("package_id") or not nested.get("plan_id"):
+            _issue(blockers, "multipage_nested_package_invalid",
+                   "Повторно подготовить штатный пакет страницы.", page_key=item.get("key"))
+    return {
+        "schema_version": 1, "multipage_package_id": f"{plan.get('multipage_id')}:v1",
+        "multipage_id": plan.get("multipage_id"), "site_brief": plan.get("site_brief"),
+        "menu": plan.get("menu"), "pages": page_packages,
+        "ready_to_fill": not blockers, "blockers": blockers,
+        "workflow": [
+            "Fill each nested package with tobiz_fill_package_content and tobiz_fill_package_media.",
+            "Check the complete envelope with tobiz_multipage_package_status.",
+            "Build only after every nested page reports ready_for_build.",
+            "After building, run tobiz_audit_project for the complete project.",
+        ],
+    }
+
+
+def progress(package_value: dict[str, Any], statuses: list[dict[str, Any]]) -> dict[str, Any]:
+    pages = package_value.get("pages") if isinstance(package_value.get("pages"), list) else []
+    by_key = {str(item.get("key")): item for item in statuses}
+    items = []
+    for page in pages:
+        key = str(page.get("key") or "")
+        status = by_key.get(key) or {}
+        page_progress = status.get("progress") if isinstance(status.get("progress"), dict) else {}
+        items.append({"key": key, "title": page.get("title"),
+                      "completion_percent": int(page_progress.get("completion_percent") or 0),
+                      "ready_for_build": page_progress.get("ready_for_build") is True,
+                      "next_action": page_progress.get("next_action") or "check_page_package"})
+    ready = bool(items) and all(item["ready_for_build"] for item in items)
+    average = round(sum(item["completion_percent"] for item in items) / len(items)) if items else 0
+    return {"ready_for_build": ready, "completion_percent": average,
+            "pages_ready": sum(item["ready_for_build"] for item in items),
+            "pages_total": len(items), "pages": items,
+            "next_action": "tobiz_build_multipage_package" if ready
+                           else "fill_incomplete_page_packages"}

@@ -57,3 +57,37 @@ def test_combined_plans_require_one_visual_system_and_ready_pages():
     assert inconsistent["ready_for_packages"] is False
     assert {"multipage_visual_system_inconsistent",
             "multipage_page_plan_not_ready"} <= codes
+
+
+def test_multipage_package_preserves_page_order_and_shared_menu():
+    manifest = multipage.validate(SITE_BRIEF, specs())
+    combined = multipage.combine(manifest, [plan("home"), plan("services")])
+    nested = [
+        {"key": "home", "title": "Главная", "package": {
+            "package_id": "home:v1", "plan_id": "home"}},
+        {"key": "services", "title": "Услуги", "package": {
+            "package_id": "services:v1", "plan_id": "services"}},
+    ]
+    result = multipage.package(combined, nested)
+    assert result["ready_to_fill"] is True
+    assert result["menu"] == manifest["menu"]
+    assert result["multipage_package_id"].endswith(":v1")
+
+
+def test_multipage_progress_waits_for_every_page():
+    package_value = {"pages": [
+        {"key": "home", "title": "Главная"},
+        {"key": "services", "title": "Услуги"},
+    ]}
+    result = multipage.progress(package_value, [
+        {"key": "home", "progress": {"completion_percent": 100,
+                                       "ready_for_build": True,
+                                       "next_action": "tobiz_build_site_package"}},
+        {"key": "services", "progress": {"completion_percent": 40,
+                                           "ready_for_build": False,
+                                           "next_action": "tobiz_fill_package_content"}},
+    ])
+    assert result["ready_for_build"] is False
+    assert result["pages_ready"] == 1
+    assert result["completion_percent"] == 70
+    assert result["next_action"] == "fill_incomplete_page_packages"

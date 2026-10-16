@@ -77,6 +77,7 @@ READ_TOOLS = {
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
     "tobiz_plan_multipage_site",
+    "tobiz_prepare_multipage_package", "tobiz_multipage_package_status",
     "tobiz_validate_conversion_path",
     "tobiz_start_site",
     "tobiz_compile_site_content", "tobiz_validate_site_recipe",
@@ -1468,6 +1469,44 @@ def register(mcp: Any, service: Service) -> list[str]:
             plans.append({"key": page["key"], "title": page["title"],
                           "slug": page["slug"], "href": page["href"], **plan})
         return multipage_domain.combine(manifest, plans)
+
+    @tool("tobiz_prepare_multipage_package",
+          "Prepare one fillable native page package for every page in a validated multi-page plan. "
+          "Nothing is created in TOBIZ. The returned envelope keeps shared navigation and exact page routes.")
+    async def tobiz_prepare_multipage_package(site_brief: dict[str, Any],
+                                              pages: list[dict[str, Any]],
+                                              save_checkpoints: bool = True) -> dict[str, Any]:
+        plan = await tobiz_plan_multipage_site(site_brief, pages)
+        if not plan.get("ready_for_packages"):
+            return plan
+        prepared = []
+        for page in plan["pages"]:
+            nested = await tobiz_prepare_site_package(
+                page["brief"], page["goal"], save_checkpoint=save_checkpoints)
+            nested.setdefault("seo", {})["title"] = page["title"]
+            nested["seo"]["dir"] = page["slug"] or "glavnaya"
+            prepared.append({key: page[key] for key in
+                             ("key", "title", "slug", "href", "menu_title", "purpose")}
+                            | {"package": nested})
+        return multipage_domain.package(plan, prepared)
+
+    @tool("tobiz_multipage_package_status",
+          "Revalidate every nested page package and return one aggregate completion status. "
+          "Read-only for TOBIZ; use before any multi-page build.")
+    async def tobiz_multipage_package_status(package: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(package, dict) or package.get("schema_version") != 1:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Передайте полный пакет из tobiz_prepare_multipage_package")
+        statuses = []
+        for page in package.get("pages") or []:
+            if not isinstance(page, dict) or not isinstance(page.get("package"), dict):
+                raise errors.TobizError(errors.BAD_ARGUMENT,
+                                        "Каждая страница должна содержать штатный package")
+            status = await tobiz_site_package_status(page["package"])
+            statuses.append({"key": page.get("key"), **status})
+        return {"multipage_package_id": package.get("multipage_package_id"),
+                "progress": multipage_domain.progress(package, statuses),
+                "page_statuses": statuses}
 
     @tool("tobiz_validate_brief", "Check whether a client brief contains the minimum verified facts "
           "needed for a trustworthy TOBIZ site. Returns only the missing required questions, optional "
