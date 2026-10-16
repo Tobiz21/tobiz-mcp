@@ -29,6 +29,7 @@ from .domain import design_feedback as design_feedback_domain
 from .domain import design_reference as design_reference_domain
 from .domain import layout as layout_domain
 from .domain import module_quality as module_quality_domain
+from .domain import project_quality as project_quality_domain
 from .domain import refinement as refinement_domain
 from .service import Service
 
@@ -53,6 +54,7 @@ READ_TOOLS = {
     "tobiz_onboarding_check",
     "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
+    "tobiz_audit_project",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
     "tobiz_list_articles", "tobiz_get_article", "tobiz_preflight_article", "tobiz_audit_article",
@@ -533,6 +535,25 @@ def register(mcp: Any, service: Service) -> list[str]:
             "pages": [p.to_dict(service.config.lp_template, project.project_id) for p in pages],
             "count": len(pages),
         }
+
+    @tool("tobiz_audit_project",
+          "Read-only audit of a native TOBIZ multi-page project: unique slugs and SEO, visible "
+          "page composition, shared header/footer types and a conversion exit on every page.")
+    async def tobiz_audit_project(project_id: Id | None = None,
+                                  goal: str = "lead_generation") -> dict[str, Any]:
+        project, pages = await service.pages(project_id, refresh=True)
+        reports = []
+        for page in pages:
+            form = await service.page_form(project.project_id, page.page_id)
+            draft = await service.draft(project.project_id, page.page_id, refresh=True)
+            reports.append({
+                **page.to_dict(), "page": form.to_dict(),
+                "composition": composition_domain.analyze(draft, goal),
+            })
+        result = project_quality_domain.audit(reports)
+        result["project_id"] = project.project_id
+        result["goal"] = goal
+        return result
 
     @tool("tobiz_list_blocks",
           "Блоки страницы в порядке отображения: block_id, type_id, название типа, позиция, "

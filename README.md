@@ -222,6 +222,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_onboarding_check`, `tobiz_diagnostics` | готовность установки и локальный обезличенный отчет поддержки |
 | `tobiz_list_projects` | проекты (сайты) аккаунта |
 | `tobiz_list_pages` | страницы проекта |
+| `tobiz_audit_project` | целостность многостраничного сайта: URL и SEO, композиция страниц, единые типы шапки/подвала, конверсионный выход |
 | `tobiz_page_summary` | компактная карта страницы: порядок блоков, короткий текст, SEO-подсказка |
 | `tobiz_list_blocks`, `tobiz_get_block` | блоки страницы и значения полей блока |
 | `tobiz_page_info` | параметры страницы как в панели: название, URL, SEO, og:image, доступ |
