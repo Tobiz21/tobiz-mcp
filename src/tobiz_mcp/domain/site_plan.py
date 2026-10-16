@@ -547,10 +547,14 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
         limit = spec.get("recommended_max_chars")
         if limit and len(value) > int(limit):
             ratio = len(value) / int(limit)
+            layout_critical = role in {"button", "section_title", "card_title"}
+            priority = ("improve" if draft_mode else
+                        "must_fix" if layout_critical or ratio > 1.5 else "improve")
             issues.append({
-                "priority": "must_fix" if ratio > 1.5 else "improve",
+                "priority": priority,
                 "code": "recipe_text_over_mobile_limit", "block_index": key[0], "path": key[1],
                 "chars": len(value), "recommended_max_chars": int(limit),
+                "field_role": role,
                 "action": "Сократить текст по смыслу и повторно проверить мобильную верстку.",
             })
         if role == "button" and value.lower().replace("ё", "е") in {

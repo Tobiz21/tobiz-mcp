@@ -166,6 +166,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "cross_section_copy_deduplication",
         "placeholder_copy_quality_gate",
         "balanced_native_card_copy_gate",
+        "mobile_critical_copy_length_gate",
         "one_call_site_workflow_start",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

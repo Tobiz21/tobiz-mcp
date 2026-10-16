@@ -296,6 +296,44 @@ def test_recipe_preflight_warns_about_text_placeholder_in_prototype():
     assert result['ready_for_build'] is True
 
 
+def test_recipe_preflight_blocks_mobile_overflow_in_title_and_button():
+    blueprint = {'recipe': {'types': ['1154'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'kind': 'text',
+         'role': 'section_title', 'current': 'Старый заголовок',
+         'recommended_max_chars': 12},
+        {'block_index': 0, 'path': '/btn1/title', 'kind': 'text',
+         'role': 'button', 'current': 'Отправить', 'recommended_max_chars': 10},
+    ]}}
+    plan = {'plan_id': 'mobile', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['1154'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Очень длинный заголовок'},
+        {'block_index': 0, 'path': '/btn1/title', 'value': 'Получить консультацию'},
+    ]}
+    result = site_plan.validate_recipe({}, plan, blueprint, recipe)
+    overflow = [item for item in result['blockers']
+                if item['code'] == 'recipe_text_over_mobile_limit']
+    assert result['ready_for_build'] is False
+    assert {item['field_role'] for item in overflow} == {'section_title', 'button'}
+
+
+def test_recipe_preflight_keeps_small_body_overrun_as_review():
+    blueprint = {'recipe': {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/text', 'kind': 'text', 'role': 'body',
+        'current': 'Старое описание', 'recommended_max_chars': 20,
+    }]}}
+    plan = {'plan_id': 'mobile', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['1154'], 'slots': [{
+        'block_index': 0, 'path': '/text', 'value': 'Подробности программы курса',
+    }]}
+    result = site_plan.validate_recipe({}, plan, blueprint, recipe)
+    issue = next(item for item in result['issues']
+                 if item['code'] == 'recipe_text_over_mobile_limit')
+    assert issue['priority'] == 'improve'
+    assert result['ready_for_build'] is True
+
+
 def test_media_preflight_accepts_complete_high_resolution_assignment():
     plan = {'plan_id': 'media-plan'}
     blueprint = {'photo_slots': [{

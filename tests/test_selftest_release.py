@@ -91,6 +91,7 @@ class FakeService:
             "cross_section_copy_deduplication",
             "placeholder_copy_quality_gate",
             "balanced_native_card_copy_gate",
+            "mobile_critical_copy_length_gate",
             "one_call_site_workflow_start",
         ]
         if self.missing_feature:
