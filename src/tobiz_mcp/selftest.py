@@ -158,6 +158,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "grounded_evidence_mapping",
         "evidence_aware_recipe_verdict",
         "cross_section_copy_deduplication",
+        "balanced_native_card_copy_gate",
         "one_call_site_workflow_start",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

@@ -534,7 +534,8 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
     for (block_index, role), values in lengths.items():
         threshold = 35 if role == "card_title" else 110
         if len(values) > 1 and max(values) - min(values) > threshold:
-            issues.append({"priority": "improve", "code": "unbalanced_card_copy",
+            issues.append({"priority": "improve" if draft_mode else "must_fix",
+                           "code": "unbalanced_card_copy",
                            "block_index": block_index, "field_role": role,
                            "min_chars": min(values), "max_chars": max(values),
                            "action": "Сбалансировать объем соседних карточек без добавления пустых фраз."})

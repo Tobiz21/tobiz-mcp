@@ -83,6 +83,7 @@ class FakeService:
             "grounded_evidence_mapping",
             "evidence_aware_recipe_verdict",
             "cross_section_copy_deduplication",
+            "balanced_native_card_copy_gate",
             "one_call_site_workflow_start",
         ]
         if self.missing_feature:

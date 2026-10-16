@@ -425,6 +425,46 @@ def test_recipe_preflight_allows_repeated_copy_only_in_explicit_prototype():
     assert 'duplicate_recipe_copy' not in {item['code'] for item in result['blockers']}
 
 
+def test_recipe_preflight_blocks_severely_unbalanced_card_copy():
+    blueprint = {'recipe': {'types': ['130'], 'slots': [
+        {'block_index': 0, 'path': '/title1', 'kind': 'text',
+         'role': 'card_title', 'current': 'Старая карточка 1'},
+        {'block_index': 0, 'path': '/title2', 'kind': 'text',
+         'role': 'card_title', 'current': 'Старая карточка 2'},
+    ]}}
+    plan = {'plan_id': 'cards', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['130'], 'slots': [
+        {'block_index': 0, 'path': '/title1', 'value': 'Аудит'},
+        {'block_index': 0, 'path': '/title2',
+         'value': 'Полный технический аудит проекта с подробными рекомендациями'},
+    ]}
+    result = site_plan.validate_recipe({}, plan, blueprint, recipe)
+    issue = next(item for item in result['issues'] if item['code'] == 'unbalanced_card_copy')
+    assert result['ready_for_build'] is False
+    assert issue['priority'] == 'must_fix'
+
+
+def test_recipe_preflight_warns_about_unbalanced_cards_in_prototype():
+    blueprint = {'recipe': {'types': ['130'], 'slots': [
+        {'block_index': 0, 'path': '/title1', 'kind': 'text',
+         'role': 'card_title', 'current': 'Старая карточка 1'},
+        {'block_index': 0, 'path': '/title2', 'kind': 'text',
+         'role': 'card_title', 'current': 'Старая карточка 2'},
+    ]}}
+    plan = {'plan_id': 'cards', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['130'], 'slots': [
+        {'block_index': 0, 'path': '/title1', 'value': 'Аудит'},
+        {'block_index': 0, 'path': '/title2',
+         'value': 'Полный технический аудит проекта с подробными рекомендациями'},
+    ]}
+    result = site_plan.validate_recipe({'allow_placeholders': True}, plan, blueprint, recipe)
+    issue = next(item for item in result['issues'] if item['code'] == 'unbalanced_card_copy')
+    assert issue['priority'] == 'improve'
+    assert result['ready_for_build'] is True
+
+
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики'}
