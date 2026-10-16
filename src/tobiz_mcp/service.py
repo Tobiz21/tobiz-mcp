@@ -1608,6 +1608,30 @@ class Service:
         temporary.replace(target)
         return record
 
+    def custom_design_templates(self) -> list[dict[str, Any]]:
+        path = self.config.audit_dir / "design-templates.json"
+        if not path.exists():
+            return []
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return body if isinstance(body, list) else []
+
+    def save_custom_design_template(self, passport: dict[str, Any]) -> dict[str, Any]:
+        templates = self.custom_design_templates()
+        if any(str(item.get("id")) == str(passport["id"]) for item in templates):
+            raise errors.TobizError(errors.CONFLICT,
+                                    f"Шаблон {passport['id']} уже зарегистрирован")
+        record = {**passport, "verified_at": datetime.now(timezone.utc).isoformat()}
+        templates.append(record)
+        self.config.audit_dir.mkdir(parents=True, exist_ok=True)
+        target = self.config.audit_dir / "design-templates.json"
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(templates, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(target)
+        return record
+
     async def health(self) -> dict[str, Any]:
         from . import __version__
 
@@ -1670,6 +1694,7 @@ class Service:
                 "design_feedback_regression_gate",
                 "enforced_design_passport_freshness",
                 "local_design_passport_refresh",
+                "account_local_design_template_registry",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -31,6 +31,22 @@ def test_design_passport_detects_native_structure_drift():
     assert {item["field"] for item in drift["mismatches"]} == {"blocks", "flex_share"}
 
 
+def test_custom_design_passport_uses_live_native_structure():
+    draft = Draft(project_id="7", page_id="8")
+    draft.blocks = {
+        "1": DraftBlock("1", "101", {}),
+        "2": DraftBlock("2", "1600", {}),
+    }
+    passport = design.custom_passport(
+        template_id="local-service", title="Локальные услуги", project_id="7", page_id="8",
+        visual_system="friendly_service", site_kind="expert_service",
+        concepts_list=["service", "regional"], strengths=["process", "contacts"],
+        photo_dependency="medium", content_density="medium", draft=draft)
+    assert passport["blocks"] == 2
+    assert passport["flex_share"] == .5
+    assert passport["source"] == "local_verified_page"
+
+
 def test_regional_drilling_prefers_long_native_construction_template():
     result = design.select({
         'industry': 'Бурение скважин в Чувашии',
@@ -123,7 +139,8 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_inspect_flex_block', 'tobiz_audit_flex_page', 'tobiz_update_flex_block',
             'tobiz_copy_native_block', 'tobiz_validate_design_library',
             'tobiz_record_design_feedback', 'tobiz_list_design_feedback',
-            'tobiz_design_lessons', 'tobiz_refresh_design_passport'} <= set(names)
+            'tobiz_design_lessons', 'tobiz_refresh_design_passport',
+            'tobiz_register_design_template'} <= set(names)
 
 
 def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():
@@ -164,6 +181,17 @@ def test_local_design_passport_override_roundtrip(tmp_path):
     loaded = service.design_passport_overrides()
     assert loaded["sample"]["flex_share"] == .118
     assert loaded["sample"]["verified_at"]
+
+
+def test_custom_design_template_registry_roundtrip(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    passport = {"id": "local-one", "project_id": "1", "page_id": "2"}
+    stored = service.save_custom_design_template(passport)
+    assert stored["verified_at"]
+    assert service.custom_design_templates()[0]["id"] == "local-one"
+    with pytest.raises(Exception):
+        service.save_custom_design_template(passport)
 
 
 def test_template_override_cannot_replace_source_identity(tmp_path):
@@ -250,6 +278,9 @@ async def test_design_library_validator_reports_drift(monkeypatch):
 
         def design_passport_overrides(self):
             return {}
+
+        def custom_design_templates(self):
+            return []
 
         async def resolve_page(self, project_id, page_id):
             return project_id, SimpleNamespace()

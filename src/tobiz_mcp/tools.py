@@ -158,6 +158,10 @@ def register(mcp: Any, service: Service) -> list[str]:
             safe_override = {key: override[key] for key in ("blocks", "flex_share", "verified_at")
                              if key in override}
             templates.append({**dict(item), **safe_override})
+        built_in_ids = {str(item["id"]) for item in templates}
+        for custom in service.custom_design_templates():
+            if str(custom.get("id")) not in built_in_ids:
+                templates.append(dict(custom))
         return templates
 
     def select_with_feedback(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
@@ -270,6 +274,32 @@ def register(mcp: Any, service: Service) -> list[str]:
         else:
             result["next_action"] = "Inspect the source template, then repeat with apply=true."
         return result
+
+    @tool("tobiz_register_design_template",
+          "Register an existing page from the current TOBIZ account as a verified local design template. "
+          "Preview by default; apply=true stores only its passport and source IDs, never page content.")
+    async def tobiz_register_design_template(
+            template_id: str, title: str, project_id: Id, page_id: Id,
+            visual_system: str, site_kind: str, concepts: list[str], strengths: list[str],
+            photo_dependency: str = "medium", content_density: str = "medium",
+            apply: bool = False) -> dict[str, Any]:
+        if any(item["id"] == str(template_id) for item in effective_templates()):
+            raise errors.TobizError(errors.CONFLICT, f"Шаблон {template_id} уже существует")
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        try:
+            passport = design_domain.custom_passport(
+                template_id=template_id, title=title, project_id=project_id, page_id=page_id,
+                visual_system=visual_system, site_kind=site_kind, concepts_list=concepts,
+                strengths=strengths, photo_dependency=photo_dependency,
+                content_density=content_density, draft=draft)
+        except (TypeError, ValueError) as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        if not apply:
+            return {"preview": True, "passport": passport,
+                    "next_action": "Inspect the source page, then repeat with apply=true."}
+        return {"preview": False, "stored": True,
+                "passport": service.save_custom_design_template(passport)}
 
     @tool("tobiz_list_design_feedback",
           "List locally stored human design evaluations. Read-only and contains no copied page content.")

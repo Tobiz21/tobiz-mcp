@@ -70,6 +70,7 @@ class FakeService:
             "design_feedback_regression_gate",
             "enforced_design_passport_freshness",
             "local_design_passport_refresh",
+            "account_local_design_template_registry",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

@@ -145,6 +145,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "design_feedback_regression_gate",
         "enforced_design_passport_freshness",
         "local_design_passport_refresh",
+        "account_local_design_template_registry",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {

@@ -101,6 +101,38 @@ CONCEPT_TERMS = {
     "b2b": ["b2b", "опт", "компани", "предприят"],
 }
 
+VISUAL_SYSTEMS = {item["visual_system"] for item in INSTALLED} | {item[2] for item in REFERENCES}
+
+
+def custom_passport(*, template_id: str, title: str, project_id: str, page_id: str,
+                    visual_system: str, site_kind: str, concepts_list: list[str],
+                    strengths: list[str], photo_dependency: str,
+                    content_density: str, draft: Any) -> dict[str, Any]:
+    template_id = str(template_id).strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,63}", template_id):
+        raise ValueError("template_id must contain 3-64 lowercase Latin letters, digits, _ or -")
+    if visual_system not in VISUAL_SYSTEMS:
+        raise ValueError("unsupported visual_system")
+    if photo_dependency not in {"low", "medium", "high"}:
+        raise ValueError("photo_dependency must be low, medium or high")
+    if content_density not in {"short", "medium", "long"}:
+        raise ValueError("content_density must be short, medium or long")
+    clean_concepts = sorted({str(value).strip() for value in concepts_list if str(value).strip()})
+    clean_strengths = sorted({str(value).strip() for value in strengths if str(value).strip()})
+    if not clean_concepts or not clean_strengths:
+        raise ValueError("concepts and strengths must not be empty")
+    visible = [block for block in draft.blocks.values() if not block.deleted]
+    flex = sum(str(block.type_id) == "1600" for block in visible)
+    return {
+        "id": template_id, "title": str(title).strip() or template_id,
+        "project_id": str(project_id), "page_id": str(page_id),
+        "visual_system": visual_system, "site_kind": str(site_kind).strip() or "custom",
+        "concepts": clean_concepts, "strengths": clean_strengths,
+        "photo_dependency": photo_dependency, "content_density": content_density,
+        "blocks": len(visible), "flex_share": round(flex / max(len(visible), 1), 3),
+        "source": "local_verified_page",
+    }
+
 
 def _tokens(value: Any) -> set[str]:
     if isinstance(value, dict):
