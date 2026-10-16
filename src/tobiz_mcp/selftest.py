@@ -180,6 +180,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "product_publication_quality_audit",
         "article_product_preflight",
         "transactional_article_product_publication",
+        "whole_project_release_gate",
         "multipage_project_quality_audit",
         "four_workflow_control_scenarios",
         "native_multipage_site_planning",

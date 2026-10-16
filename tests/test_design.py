@@ -190,6 +190,7 @@ def test_design_tools_are_registered_as_read_only_operations():
     assert {'tobiz_preflight_article', 'tobiz_audit_article',
             'tobiz_preflight_product', 'tobiz_audit_product',
             'tobiz_publish_article_package', 'tobiz_publish_product_package',
+            'tobiz_release_project_gate',
             'tobiz_audit_project', 'tobiz_plan_multipage_site',
             'tobiz_prepare_multipage_package',
             'tobiz_multipage_package_status',

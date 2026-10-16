@@ -56,6 +56,7 @@ READ_TOOLS = {
     "tobiz_list_projects",
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_audit_project",
+    "tobiz_release_project_gate",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
     "tobiz_list_articles", "tobiz_get_article", "tobiz_preflight_article", "tobiz_audit_article",
@@ -558,6 +559,63 @@ def register(mcp: Any, service: Service) -> list[str]:
         result["project_id"] = project.project_id
         result["goal"] = goal
         return result
+
+    @tool("tobiz_release_project_gate",
+          "Read-only whole-project release gate. Audits every native page plus every article, "
+          "product and product offer in the project. Optional require_articles/require_products "
+          "turn an empty blog or catalog into a blocker. Returns one release_ready verdict.")
+    async def tobiz_release_project_gate(
+            project_id: Id | None = None, goal: str = "lead_generation",
+            require_articles: bool = False, require_products: bool = False,
+            allow_price_on_request: bool = False) -> dict[str, Any]:
+        page_audit = await tobiz_audit_project(project_id=project_id, goal=goal)
+        resolved_project_id = str(page_audit["project_id"])
+        article_list = await service.module_list(
+            resolved_project_id, "article", limit=100, page=1)
+        product_list = await service.module_list(
+            resolved_project_id, "item", limit=100, page=1)
+        article_rows = list(article_list.get("articles") or [])
+        product_rows = list(product_list.get("items") or [])
+        article_audits = []
+        product_audits = []
+        for row in article_rows:
+            entity_id = str(row.get("id") or "")
+            if entity_id:
+                article = await service.module_get(resolved_project_id, "article", entity_id)
+                article_audits.append(module_quality_domain.audit_article(article))
+        for row in product_rows:
+            entity_id = str(row.get("id") or "")
+            if entity_id:
+                product = await service.module_get(resolved_project_id, "item", entity_id)
+                offers = await service.product_offers(resolved_project_id, entity_id)
+                product_audits.append(module_quality_domain.audit_product(
+                    product, offers, allow_price_on_request=allow_price_on_request))
+        blockers = []
+        if not page_audit["ready"]:
+            blockers.append({"code": "project_pages_not_ready",
+                             "count": len(page_audit["blockers"])})
+        failed_articles = [item for item in article_audits if not item["ready_for_publication"]]
+        failed_products = [item for item in product_audits if not item["ready_for_publication"]]
+        if failed_articles:
+            blockers.append({"code": "project_articles_not_ready",
+                             "ids": [item["id"] for item in failed_articles]})
+        if failed_products:
+            blockers.append({"code": "project_products_not_ready",
+                             "ids": [item["id"] for item in failed_products]})
+        if require_articles and not article_audits:
+            blockers.append({"code": "project_articles_required"})
+        if require_products and not product_audits:
+            blockers.append({"code": "project_products_required"})
+        scores = [float(page_audit["score"])] + [
+            float(item["score"]) for item in article_audits + product_audits]
+        return {
+            "kind": "whole_project_release", "project_id": resolved_project_id,
+            "release_ready": not blockers and min(scores) >= 7,
+            "score": round(sum(scores) / len(scores), 1), "target": 7.0,
+            "blockers": blockers, "pages": page_audit,
+            "articles": {"count": len(article_audits), "audits": article_audits},
+            "products": {"count": len(product_audits), "audits": product_audits},
+        }
 
     @tool("tobiz_list_blocks",
           "Блоки страницы в порядке отображения: block_id, type_id, название типа, позиция, "

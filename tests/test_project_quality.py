@@ -105,3 +105,66 @@ async def test_project_audit_tool_reads_every_native_page():
     assert response["data"]["visible_pages"] == 2
     assert service.page_form.await_count == 2
     assert service.draft.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_whole_project_release_gate_includes_articles_and_products():
+    pages = [Page("1", title="Главная", slug="glavnaya"),
+             Page("2", title="Услуги", slug="uslugi")]
+    project = SimpleNamespace(project_id="7")
+    forms = [PageForm(text={
+        "page_title": item.title, "page_dir": item.slug,
+        "page_seo_title": f"Разработка сайтов - {item.title} для бизнеса",
+        "page_seo_description": ("Подробное описание страницы для поисковой выдачи, которое "
+                                 "объясняет содержание и пользу посетителю без шаблонов."),
+    }) for item in pages]
+    drafts = [Draft("7", item.page_id, blocks={
+        "1": DraftBlock("1", "105", {"menu1": [], "phone": "+7 900 000-00-00"}),
+        "2": DraftBlock("2", "101", {"title": "Создаем сайты для бизнеса"}),
+        "3": DraftBlock("3", "306", {"title": "Оставьте заявку", "form1": []}),
+    }, order=["1", "2", "3"]) for item in pages]
+    article = {
+        "id": "31", "title": "Как выбрать программу обучения для ребенка",
+        "dir": "programma-obucheniya-rebenka",
+        "short_description": ("Подробно разбираем критерии выбора программы, формат занятий и "
+                              "вопросы, которые стоит задать преподавателю до старта."),
+        "description": ("<h2>Критерии</h2><p>" + "Полезный текст " * 120 +
+                        "</p><h2>Формат занятий</h2><p>Практические рекомендации.</p>"),
+        "seo_title": "Как выбрать программу обучения для ребенка",
+        "seo_description": "Практическое руководство по выбору программы обучения для ребенка и проверке формата занятий.",
+        "images": [{"id": "1"}], "categories": ["1"],
+    }
+    product = {
+        "id": "41", "title": "Комплект оборудования для проверки извещателей",
+        "dir": "komplekt-proverki-izveshchateley", "price": 24900,
+        "short_description": "Готовый комплект для функциональной проверки пожарных извещателей.",
+        "description": "Комплектация, совместимость и порядок применения. " * 12,
+        "seo_title": "Комплект оборудования для проверки извещателей",
+        "seo_description": "Комплект для функциональной проверки пожарных извещателей: состав, характеристики и цена.",
+        "images": [{"id": "2"}], "categories": ["2"],
+    }
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        pages=AsyncMock(return_value=(project, pages)),
+        page_form=AsyncMock(side_effect=forms), draft=AsyncMock(side_effect=drafts),
+        module_list=AsyncMock(side_effect=[{"articles": [{"id": "31"}]},
+                                           {"items": [{"id": "41"}]}]),
+        module_get=AsyncMock(side_effect=[article, product]),
+        product_offers=AsyncMock(return_value=[]),
+    )
+    functions = {}
+
+    class MCP:
+        def tool(self, name, description):
+            def capture(fn):
+                functions[name] = fn
+                return fn
+            return capture
+
+    register(MCP(), service)
+    response = await functions["tobiz_release_project_gate"](
+        project_id="7", require_articles=True, require_products=True)
+    assert response["ok"] is True
+    assert response["data"]["release_ready"] is True
+    assert response["data"]["articles"]["count"] == 1
+    assert response["data"]["products"]["count"] == 1
