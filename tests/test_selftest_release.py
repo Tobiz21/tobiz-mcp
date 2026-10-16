@@ -73,6 +73,7 @@ class FakeService:
             "account_local_design_template_registry",
             "quality_gated_design_template_registration",
             "available_template_fallback_selection",
+            "bounded_parallel_template_preflight",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

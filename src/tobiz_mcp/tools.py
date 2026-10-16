@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import asyncio
 import functools
 import json
 import time
@@ -175,23 +176,29 @@ def register(mcp: Any, service: Service) -> list[str]:
             ) -> tuple[dict[str, Any], dict[str, Any], Any, dict[str, Any]]:
         selection = select_with_feedback(brief, top_k=len(effective_templates()))
         ranked = [selection["recommended"], *selection["alternatives"]]
-        accepted = []
-        rejected = []
-        for candidate in ranked:
+        await service.projects()
+        semaphore = asyncio.Semaphore(3)
+
+        async def inspect_candidate(candidate: dict[str, Any]) -> tuple[str, Any]:
             if (max_flex_share is not None
                     and float(candidate.get("flex_share") or 0) > max_flex_share):
-                rejected.append({"id": candidate["id"], "code": "flex_limit_exceeded"})
-                continue
-            try:
-                project_id, _ = await service.resolve_page(
-                    candidate["project_id"], candidate["page_id"])
-                draft = await service.draft(project_id, candidate["page_id"])
-                passport = ensure_template_current(candidate, draft)
-            except Exception as exc:  # one bad source must not prevent a valid fallback
-                rejected.append({"id": candidate["id"], "code": "source_unavailable_or_stale",
-                                 "error": str(exc)})
-                continue
-            accepted.append((candidate, draft, passport))
+                return "rejected", {"id": candidate["id"], "code": "flex_limit_exceeded"}
+            async with semaphore:
+                try:
+                    project_id, _ = await service.resolve_page(
+                        candidate["project_id"], candidate["page_id"])
+                    draft = await service.draft(project_id, candidate["page_id"])
+                    passport = ensure_template_current(candidate, draft)
+                except Exception as exc:  # one bad source must not prevent a valid fallback
+                    return "rejected", {
+                        "id": candidate["id"], "code": "source_unavailable_or_stale",
+                        "error": str(exc),
+                    }
+            return "accepted", (candidate, draft, passport)
+
+        inspected = await asyncio.gather(*(inspect_candidate(candidate) for candidate in ranked))
+        accepted = [value for status, value in inspected if status == "accepted"]
+        rejected = [value for status, value in inspected if status == "rejected"]
         if not accepted:
             raise errors.TobizError(
                 errors.NOT_FOUND, "В текущем аккаунте нет доступного проверенного шаблона",
@@ -203,7 +210,9 @@ def register(mcp: Any, service: Service) -> list[str]:
         resolved = {**selection, "recommended": selected,
                     "alternatives": available_items[1:bounded],
                     "unavailable_sources": rejected,
-                    "availability_checked": True}
+                    "availability_checked": True,
+                    "availability_checked_count": len(ranked),
+                    "availability_concurrency": min(3, len(ranked))}
         return resolved, selected, draft, passport
 
     def ensure_template_current(selected: dict[str, Any], draft: Any) -> dict[str, Any]:

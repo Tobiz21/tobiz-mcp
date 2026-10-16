@@ -1697,6 +1697,7 @@ class Service:
                 "account_local_design_template_registry",
                 "quality_gated_design_template_registration",
                 "available_template_fallback_selection",
+                "bounded_parallel_template_preflight",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

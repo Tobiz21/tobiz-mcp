@@ -354,6 +354,9 @@ async def test_design_selection_skips_unavailable_source(monkeypatch):
         def list_design_feedback(self, **kwargs):
             return {"records": []}
 
+        async def projects(self):
+            return []
+
         async def resolve_page(self, project_id, page_id):
             if project_id == "bad":
                 raise RuntimeError("not available")
@@ -368,3 +371,5 @@ async def test_design_selection_skips_unavailable_source(monkeypatch):
     assert response["data"]["recommended"]["id"] == "z-good"
     assert response["data"]["unavailable_sources"][0]["id"] == "a-bad"
     assert response["data"]["availability_checked"] is True
+    assert response["data"]["availability_checked_count"] == 2
+    assert response["data"]["availability_concurrency"] == 2
