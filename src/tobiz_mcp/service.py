@@ -1717,6 +1717,7 @@ class Service:
                 "balanced_native_card_copy_gate",
                 "mobile_critical_copy_length_gate",
                 "native_form_field_role_profiling",
+                "complete_native_form_submission_gate",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

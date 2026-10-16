@@ -373,20 +373,33 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         for key, value in block.values.items():
             if not re.fullmatch(r"form\d+", str(key)) or not isinstance(value, list) or not value:
                 continue
-            roles = [_form_field_role(item) for item in value if isinstance(item, dict)]
+            controls = [item for item in value if isinstance(item, dict)]
+            roles = [_form_field_role(item) for item in controls]
             missing = [role for role in required if role not in roles]
             name_index = roles.index("name") if "name" in roles else -1
             phone_index = roles.index("phone") if "phone" in roles else -1
+            submit_labels = [
+                str(item.get("title") or item.get("value") or "").strip()
+                for item, role in zip(controls, roles) if role == "button"
+            ]
+            duplicate_fields = sorted({
+                role for role in roles
+                if role not in {"button", "unknown"} and roles.count(role) > 1
+            })
+            has_button = bool(submit_labels)
+            has_labeled_button = any(submit_labels)
             forms.append({
                 "block_index": position,
                 "block_id": str(block_id),
                 "form_key": str(key),
                 "fields": roles,
                 "missing_required_fields": missing,
-                "has_button": "button" in roles,
+                "has_button": has_button,
+                "has_labeled_button": has_labeled_button,
+                "duplicate_fields": duplicate_fields,
                 "name_before_phone": (name_index >= 0 and phone_index >= 0
                                       and name_index < phone_index),
-                "matches_contract": (not missing and "button" in roles
+                "matches_contract": (not missing and has_labeled_button and not duplicate_fields
                                      and ("phone" not in required or name_index < phone_index)),
             })
     matching = [item for item in forms if item["matches_contract"]]
@@ -412,13 +425,30 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                       for item in invalid_lead_forms],
             "action": "Поставить поле «Имя» перед «Телефоном» штатной настройкой формы.",
         })
+    unusable_forms = [item for item in forms if not item["has_labeled_button"]]
+    if unusable_forms:
+        blockers.append({
+            "code": "form_submit_missing",
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+                      for item in unusable_forms],
+            "action": "Добавить штатную видимую кнопку отправки с понятной подписью.",
+        })
+    duplicate_forms = [item for item in forms if item["duplicate_fields"]]
+    if duplicate_forms:
+        blockers.append({
+            "code": "duplicate_form_fields",
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "fields": item["duplicate_fields"]} for item in duplicate_forms],
+            "action": "Оставить каждое смысловое поле в штатной форме один раз.",
+        })
     return {
         "ready": not blockers,
         "required_fields": required,
         "forms": forms,
         "matching_forms": len(matching),
         "blockers": blockers,
-        "rule": "Использовать штатную форму; поле «Имя» идет перед «Телефоном».",
+        "rule": ("Использовать штатную форму; поле «Имя» идет перед «Телефоном», "
+                 "поля не дублируются, кнопка отправки имеет видимую подпись."),
     }
 
 
