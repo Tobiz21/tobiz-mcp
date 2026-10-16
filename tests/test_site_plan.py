@@ -221,14 +221,15 @@ def test_media_preflight_accepts_complete_high_resolution_assignment():
         'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
             'filename': 'hero.webp', 'width': 1920, 'height': 1080,
             'subject': 'Учитель у доски', 'safe_text_area': True,
+            'section_fit_confirmed': True,
         }],
     }, {
         'block_index': 1, 'path_pattern': '/items/0/image', 'assets': [{
             'filename': 'course-1.webp', 'width': 1000, 'height': 1000,
-            'subject': 'Тетрадь ученика',
+            'subject': 'Тетрадь ученика', 'section_fit_confirmed': True,
         }, {
             'filename': 'course-2.webp', 'width': 1000, 'height': 1000,
-            'subject': 'Онлайн-занятие',
+            'subject': 'Онлайн-занятие', 'section_fit_confirmed': True,
         }],
     }]}
     result = site_plan.validate_media_recipe(plan, blueprint, media_recipe)
@@ -252,7 +253,8 @@ def test_media_preflight_blocks_placeholders_bad_ratio_and_missing_safe_area():
     }]})
     codes = {item['code'] for item in result['blockers']}
     assert {'media_placeholder_used', 'media_resolution_too_low', 'background_not_wide',
-            'background_safe_area_unconfirmed'} <= codes
+            'background_safe_area_unconfirmed', 'media_subject_missing',
+            'media_section_fit_unconfirmed'} <= codes
     assert result['ready_for_build'] is False
 
 
@@ -277,6 +279,7 @@ def test_unified_preflight_accepts_complete_quality_package():
         'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
             'filename': 'hero.webp', 'width': 1920, 'height': 1080,
             'subject': 'Урок математики', 'safe_text_area': True,
+            'section_fit_confirmed': True,
         }],
     }]}
     seo = {
@@ -348,8 +351,10 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     assert package['recipe']['slots'][0]['instruction']
     assert package['media_recipe']['groups'][0]['assets'][0] == {
         'path': '/bg_image', 'filename': '', 'width': 0, 'height': 0,
-        'subject': '', 'safe_text_area': False,
+        'subject': '', 'section_fit_confirmed': False, 'safe_text_area': False,
     }
+    assert package['media_recipe']['groups'][0]['section_role'] == 'hero'
+    assert package['media_recipe']['groups'][0]['shot_role'] == 'hero'
     assert package['seo']['title'] == 'Онлайн-школа математики'
     assert 'Курс математики' not in str(package['recipe'])
 
@@ -377,12 +382,35 @@ def test_media_validation_ignores_hidden_catalog_alternates() -> None:
     result = site_plan.validate_media_recipe({'plan_id': 'x'}, blueprint, {'groups': [{
         'block_index': 3, 'path_pattern': '/arr1/0/image', 'assets': [{
             'filename': 'event.webp', 'width': 1200, 'height': 1200,
-            'subject': 'Гости на празднике',
+            'subject': 'Гости на празднике', 'section_fit_confirmed': True,
         }],
     }]})
 
     assert result['ready_for_build'] is True
     assert result['assigned_slots'] == 1
+
+
+def test_media_validation_blocks_one_photo_reused_across_sections() -> None:
+    blueprint = {'photo_slots': [{
+        'block_index': 0, 'path_pattern': '/bg_image', 'role': 'background',
+        'paths': ['/bg_image'], 'slots': 1,
+    }, {
+        'block_index': 1, 'path_pattern': '/image', 'role': 'content_image',
+        'paths': ['/image'], 'slots': 1,
+    }]}
+    groups = []
+    for index, pattern in ((0, '/bg_image'), (1, '/image')):
+        groups.append({
+            'block_index': index, 'path_pattern': pattern, 'assets': [{
+                'filename': 'same.webp', 'width': 1920, 'height': 1080,
+                'subject': 'Преподаватель объясняет материал ученику',
+                'safe_text_area': True, 'section_fit_confirmed': True,
+            }],
+        })
+    result = site_plan.validate_media_recipe(
+        {'plan_id': 'x'}, blueprint, {'groups': groups})
+    assert 'media_reused_across_sections' in {
+        item['code'] for item in result['blockers']}
 
 
 def test_safe_system_title_removes_panel_forbidden_symbols() -> None:
@@ -414,6 +442,7 @@ def test_fill_package_media_returns_new_package_with_verified_metadata():
         'media_asset': {'filename': 'hero.webp', 'width': 1920, 'height': 1080,
                         'aspect_ratio': 1.7778, 'content_type': 'image/webp'},
         'subject': 'Учитель объясняет задачу', 'safe_text_area': True,
+        'section_fit_confirmed': True, 'visual_review_notes': 'Кадр подходит первому экрану.',
     }])
     asset = result['package']['media_recipe']['groups'][0]['assets'][0]
     assert result['filled_count'] == 1
@@ -421,6 +450,8 @@ def test_fill_package_media_returns_new_package_with_verified_metadata():
     assert asset['width'] == 1920
     assert asset['subject'] == 'Учитель объясняет задачу'
     assert asset['safe_text_area'] is True
+    assert asset['section_fit_confirmed'] is True
+    assert asset['visual_review_notes'] == 'Кадр подходит первому экрану.'
     assert package['media_recipe']['groups'][0]['assets'][0]['filename'] == ''
 
 

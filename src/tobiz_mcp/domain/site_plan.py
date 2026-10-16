@@ -544,9 +544,14 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
 def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                           media_recipe: dict[str, Any]) -> dict[str, Any]:
     """Validate image assignments before a native template is copied."""
+    requirements = {
+        (item.get("block_index"), item.get("path_pattern")): item
+        for item in plan.get("photo_requirements") or []
+    }
     expected = {}
     for item in blueprint.get("photo_slots") or []:
-        spec = dict(item)
+        key = (item.get("block_index"), item.get("path_pattern"))
+        spec = {**dict(item), **requirements.get(key, {})}
         paths = _visible_media_paths(spec)
         if paths != list(spec.get("paths") or []):
             spec["paths"] = paths
@@ -614,10 +619,19 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                     issues.append({"priority": "must_fix", "code": "background_safe_area_unconfirmed",
                                    "block_index": key[0], "path": paths[index],
                                    "action": "Подтвердить свободную область под текст после проверки кадра."})
-            if not str(asset.get("subject") or "").strip():
-                issues.append({"priority": "improve", "code": "media_subject_missing",
+            subject = str(asset.get("subject") or "").strip()
+            normalized_subject = subject.lower().replace("ё", "е")
+            if (len(subject) < 8 or normalized_subject in {
+                    "фото", "картинка", "изображение", "женщина", "мужчина", "человек"}):
+                issues.append({"priority": "must_fix", "code": "media_subject_missing",
                                "block_index": key[0], "path": paths[index],
-                               "action": "Кратко описать главный объект кадра для смысловой проверки."})
+                               "action": "Описать конкретный сюжет кадра, а не общий тип изображения."})
+            if asset.get("section_fit_confirmed") is not True:
+                issues.append({"priority": "must_fix", "code": "media_section_fit_unconfirmed",
+                               "block_index": key[0], "path": paths[index],
+                               "section_role": spec.get("section_role"),
+                               "shot_role": spec.get("shot_role"),
+                               "action": "Визуально проверить кадр и подтвердить соответствие смыслу секции."})
             filenames.setdefault(filename.lower(), []).append(key)
             assignments.append({"block_index": key[0], "path": paths[index], "value": filename})
         if len(ratios) > 1 and max(ratios) - min(ratios) > .08:
@@ -631,7 +645,7 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                        "action": "Использовать только фотогруппу из photo_requirements плана."})
     for filename, groups in filenames.items():
         if filename and len(set(groups)) > 1:
-            issues.append({"priority": "improve", "code": "media_reused_across_sections",
+            issues.append({"priority": "must_fix", "code": "media_reused_across_sections",
                            "filename": filename, "uses": len(groups),
                            "action": "Не повторять один кадр в разных смысловых секциях без причины."})
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
@@ -776,7 +790,7 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
         assets = []
         for path in paths:
             asset = {"path": path, "filename": "", "width": 0, "height": 0,
-                     "subject": ""}
+                     "subject": "", "section_fit_confirmed": False}
             if group.get("role") == "background":
                 asset["safe_text_area"] = False
             assets.append(asset)
@@ -785,6 +799,8 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "role": group.get("role"), "required_assets": len(assets),
             "orientation": requirement.get("orientation"), "ratio": requirement.get("ratio"),
             "safe_zone": requirement.get("safe_zone"), "brief": requirement.get("brief"),
+            "section_role": requirement.get("section_role"),
+            "shot_role": requirement.get("shot_role"),
             "assets": assets,
         })
     facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
@@ -864,6 +880,10 @@ def fill_package_media(package: dict[str, Any], uploaded: list[dict[str, Any]]) 
             asset["subject"] = str(item["subject"]).strip()
         if "safe_text_area" in item:
             asset["safe_text_area"] = item.get("safe_text_area") is True
+        if "section_fit_confirmed" in item:
+            asset["section_fit_confirmed"] = item.get("section_fit_confirmed") is True
+        if str(item.get("visual_review_notes") or "").strip():
+            asset["visual_review_notes"] = str(item["visual_review_notes"]).strip()
         assets[index] = asset
         filled.append({"block_index": key[0], "path_pattern": key[1],
                        "asset_index": index, "filename": metadata["filename"]})
