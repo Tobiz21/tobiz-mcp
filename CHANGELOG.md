@@ -1,5 +1,7 @@
 # Changelog
 
+- Пакетные операции статей и товаров проверяют `category_ids` по штатному списку выбранного проекта
+  до записи; dry-run с `project_id` теперь ловит устаревшие и чужие категории заранее.
 - Глубина статьи стала настраиваемым контрактом: `minimum_body_chars` проходит через preflight,
   создание, обновление и аудит, а `minimum_article_body_chars` применяется ко всему проекту.
 - Добавлены транзакционные `tobiz_update_article_package` и `tobiz_update_product_package`:

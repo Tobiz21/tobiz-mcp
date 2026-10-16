@@ -216,6 +216,24 @@ async def test_publish_package_rejects_ambiguous_image_source_in_preview():
 
 
 @pytest.mark.asyncio
+async def test_publish_package_rejects_unknown_project_category_before_write():
+    value = article()
+    value.pop("images")
+    value.pop("categories")
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "2"}]),
+    )
+    response = await registered_functions(service)["tobiz_publish_article_package"](
+        project_id="7", fields=value, category_ids=["999"],
+        images=[{"path": "cover.jpg"}], apply=False)
+    assert response["ok"] is False
+    assert response["error"]["code"] == "BAD_ARGUMENT"
+    assert response["error"]["raw"]["requested"] == ["999"]
+
+
+@pytest.mark.asyncio
 async def test_publish_article_package_builds_and_audits_complete_entity():
     value = article()
     fields = {key: item for key, item in value.items()
@@ -223,6 +241,7 @@ async def test_publish_article_package_builds_and_audits_complete_entity():
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "2"}]),
         module_create=AsyncMock(return_value={"id": "11"}),
         module_update=AsyncMock(),
         module_upload_image=AsyncMock(),
@@ -246,6 +265,7 @@ async def test_publish_product_package_rolls_back_on_offer_failure():
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "4"}]),
         module_create=AsyncMock(return_value={"id": "12"}),
         module_update=AsyncMock(),
         module_upload_image=AsyncMock(),
@@ -272,6 +292,7 @@ async def test_publish_product_package_maps_offer_image_index_to_native_id():
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "4"}]),
         module_create=AsyncMock(return_value={"id": "12"}),
         module_update=AsyncMock(), module_upload_image=AsyncMock(),
         module_get=AsyncMock(return_value=saved_product),
@@ -295,6 +316,7 @@ async def test_update_article_package_previews_merged_existing_media():
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "2"}]),
         module_get=AsyncMock(return_value=current),
     )
     response = await registered_functions(service)["tobiz_update_article_package"](
@@ -312,6 +334,7 @@ async def test_update_article_package_restores_previous_fields_after_failed_audi
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "2"}]),
         module_get=AsyncMock(side_effect=[current, broken]),
         module_update=AsyncMock(),
     )
@@ -331,6 +354,7 @@ async def test_update_product_package_restores_offer_and_product_on_failure():
     service = SimpleNamespace(
         config=SimpleNamespace(read_only=False),
         project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_categories=AsyncMock(return_value=[{"id": "4"}]),
         module_get=AsyncMock(side_effect=[current, {**current, "images": []}]),
         product_offers=AsyncMock(side_effect=[[current_offer], [current_offer]]),
         module_update=AsyncMock(), product_offer_update=AsyncMock(),

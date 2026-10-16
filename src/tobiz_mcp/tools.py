@@ -177,6 +177,25 @@ async def _all_module_rows(service: Service, project_id: str, kind: str,
     return rows, False
 
 
+async def _verify_module_categories(service: Service, project_id: str, kind: str,
+                                    category_ids: list[str]) -> dict[str, Any]:
+    categories = await service.module_categories(project_id, kind)
+    available = {
+        str(item.get("id") or item.get("category_id") or "")
+        for item in categories if isinstance(item, dict)
+    }
+    requested = {str(value) for value in category_ids if str(value)}
+    missing = sorted(requested - available)
+    if missing:
+        label = "статей" if kind == "article" else "товаров"
+        raise errors.TobizError(
+            errors.BAD_ARGUMENT, f"Не найдены категории {label}: {', '.join(missing)}",
+            "Перечитайте штатный список категорий проекта",
+            raw={"requested": sorted(requested), "available": sorted(available)})
+    return {"verified": True, "requested": sorted(requested),
+            "available_count": len(available)}
+
+
 def wrap(func: Callable[..., Any], *, tool_name: str = "",
          metric_recorder: Callable[[str, bool, int, str | None], None] | None = None
          ) -> Callable[..., Any]:
@@ -909,9 +928,13 @@ def register(mcp: Any, service: Service) -> list[str]:
         preflight = module_quality_domain.preflight_article(
             final_fields, final_categories, len(final_images),
             minimum_body_chars=minimum_body_chars)
+        project = await service.project(project_id) if (apply or project_id) else None
+        category_check = (await _verify_module_categories(
+            service, project.project_id, "article", final_categories)
+            if project is not None else {"verified": False, "reason": "project_id_not_provided"})
         plan = {"kind": "article", "fields": final_fields,
                 "category_ids": final_categories, "image_count": len(final_images),
-                "preflight": preflight}
+                "preflight": preflight, "category_check": category_check}
         if not apply:
             return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
                     "plan": plan}
@@ -919,7 +942,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Пакет статьи не готов к публикации",
                                     "Исправьте blockers из preflight", raw=preflight)
-        project = await service.project(project_id)
+        assert project is not None
         entity_id = ""
         try:
             article = await service.module_create(project.project_id, "article")
@@ -994,13 +1017,16 @@ def register(mcp: Any, service: Service) -> list[str]:
                                     "Передайте fields или category_ids для обновления статьи")
         final_categories = (_entity_category_ids(current) if category_ids is None
                             else [str(value) for value in category_ids])
+        category_check = await _verify_module_categories(
+            service, project.project_id, "article", final_categories)
         candidate = {**current, **updates}
         preflight = module_quality_domain.preflight_article(
             candidate, final_categories, len(current.get("images") or []),
             minimum_body_chars=minimum_body_chars)
         if not apply:
             return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
-                    "article_id": str(article_id), "preflight": preflight}
+                    "article_id": str(article_id), "preflight": preflight,
+                    "category_check": category_check}
         if not preflight["ready_for_publication"]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Обновление статьи не проходит preflight",
@@ -1131,9 +1157,14 @@ def register(mcp: Any, service: Service) -> list[str]:
         preflight = module_quality_domain.preflight_product(
             final_fields, final_categories, final_offers, len(final_images),
             allow_price_on_request=allow_price_on_request)
+        project = await service.project(project_id) if (apply or project_id) else None
+        category_check = (await _verify_module_categories(
+            service, project.project_id, "item", final_categories)
+            if project is not None else {"verified": False, "reason": "project_id_not_provided"})
         plan = {"kind": "product", "fields": final_fields,
                 "category_ids": final_categories, "image_count": len(final_images),
-                "offers": final_offers, "preflight": preflight}
+                "offers": final_offers, "preflight": preflight,
+                "category_check": category_check}
         if not apply:
             return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
                     "plan": plan}
@@ -1141,7 +1172,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Пакет товара не готов к публикации",
                                     "Исправьте blockers из preflight", raw=preflight)
-        project = await service.project(project_id)
+        assert project is not None
         entity_id = ""
         try:
             product = await service.module_create(project.project_id, "item")
@@ -1253,6 +1284,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             candidate_offers.append({**offer, **update_map.get(offer_id, {})})
         final_categories = (_entity_category_ids(current) if category_ids is None
                             else [str(value) for value in category_ids])
+        category_check = await _verify_module_categories(
+            service, project.project_id, "item", final_categories)
         candidate = {**current, **updates}
         preflight = module_quality_domain.preflight_product(
             candidate, final_categories, candidate_offers, len(current.get("images") or []),
@@ -1260,7 +1293,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         if not apply:
             return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
                     "product_id": str(product_id), "preflight": preflight,
-                    "offer_updates": normalized_updates}
+                    "offer_updates": normalized_updates, "category_check": category_check}
         if not preflight["ready_for_publication"]:
             raise errors.TobizError(errors.BAD_ARGUMENT,
                                     "Обновление товара не проходит preflight",
