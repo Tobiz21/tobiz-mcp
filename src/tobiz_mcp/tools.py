@@ -247,13 +247,15 @@ def register(mcp: Any, service: Service) -> list[str]:
                                            score_overall: float,
                                            dimensions: dict[str, Any] | None = None,
                                            issues: list[str] | None = None,
+                                           issue_codes: list[str] | None = None,
                                            corrections: list[str] | None = None,
                                            notes: str = "", template_id: str = "",
                                            apply: bool = False) -> dict[str, Any]:
         try:
             record = design_feedback_domain.normalize(
                 project_id=project_id, page_id=page_id, score_overall=score_overall,
-                dimensions=dimensions, issues=issues, corrections=corrections,
+                dimensions=dimensions, issues=issues, issue_codes=issue_codes,
+                corrections=corrections,
                 notes=notes, template_id=template_id)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
@@ -1585,12 +1587,25 @@ def register(mcp: Any, service: Service) -> list[str]:
         gate = design_gate_domain.evaluate(
             target_audit, target_composition, reference, roundtrip,
             has_unsaved_changes=target_draft.has_changes, claims=claims)
+        regressions = design_feedback_domain.check_regressions(
+            plan.get("anti_regression") or [], target_audit, target_composition)
+        if not regressions["passed"]:
+            gate["blockers"] = [
+                {"source": "design_feedback", "code": "known_design_regression",
+                 "lesson_code": item["code"], "previous_count": item["previous_count"],
+                 "detects": item["detects"],
+                 "action": "Исправить ранее отмеченную проблему до выдачи сайта."}
+                for item in regressions["recurring"]
+            ] + gate["blockers"]
+            gate["verdict"] = "save_blocked"
+            gate["release_ready"] = False
+            gate["score"] = min(float(gate["score"]), 4.9)
         if not plan_check["matches"]:
             gate["blockers"] = plan_check["issues"] + gate["blockers"]
             gate["verdict"] = "save_blocked"
             gate["release_ready"] = False
             gate["score"] = min(float(gate["score"]), 4.9)
-        return {"plan": plan, "plan_check": plan_check,
+        return {"plan": plan, "plan_check": plan_check, "anti_regression": regressions,
                 "images": image_audit_domain.summarize(target_report),
                 "claims": claims, "reference_comparison": reference, "gate": gate}
 
@@ -1765,12 +1780,26 @@ def register(mcp: Any, service: Service) -> list[str]:
                 target_audit, target_composition, reference, roundtrip,
                 has_unsaved_changes=target_draft.has_changes,
                 claims=claims)
+            regressions = design_feedback_domain.check_regressions(
+                site_plan.get("anti_regression") or [], target_audit, target_composition)
+            if not regressions["passed"]:
+                gate["blockers"] = [
+                    {"source": "design_feedback", "code": "known_design_regression",
+                     "lesson_code": item["code"], "previous_count": item["previous_count"],
+                     "detects": item["detects"],
+                     "action": "Исправить ранее отмеченную проблему до выдачи сайта."}
+                    for item in regressions["recurring"]
+                ] + gate["blockers"]
+                gate["verdict"] = "save_blocked"
+                gate["release_ready"] = False
+                gate["score"] = min(float(gate["score"]), 4.9)
             if not plan_check["matches"]:
                 gate["blockers"] = plan_check["issues"] + gate["blockers"]
                 gate["verdict"] = "save_blocked"
                 gate["release_ready"] = False
                 gate["score"] = min(float(gate["score"]), 4.9)
             result["plan_check"] = plan_check
+            result["anti_regression"] = regressions
             result["image_audit"] = image_audit_domain.summarize(target_report)
             result["reference_comparison"] = reference
             result["claim_audit"] = claims

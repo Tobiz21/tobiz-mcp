@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from . import claim_audit, composition, content
+from . import claim_audit, composition, content, design_feedback
 
 
 PHOTO_RULES = {
@@ -185,6 +185,8 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
             "cta": "one primary style; align buttons with the surrounding content",
             "flex_limit": .3,
         },
+        "anti_regression": design_feedback.regression_profile(
+            str(selected.get("id") or ""), selection.get("feedback_lessons") or {}),
         "acceptance": [
             "all meaningful recipe slots replaced", "no source-theme terms remain",
             "all photo requirements reviewed on desktop, tablet and mobile",

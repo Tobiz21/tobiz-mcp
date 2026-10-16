@@ -157,6 +157,26 @@ def test_design_feedback_reorders_templates_with_bounded_evidence():
     assert any("пользовательская оценка" in risk for risk in jeans["risks"])
 
 
+def test_known_design_issue_becomes_regression_check():
+    records = [{"project_id": "433136", "page_id": "1221168", "score_overall": 5,
+                "issue_codes": ["uneven_cards"], "issues": [], "corrections": []}]
+    lessons = design_feedback.summarize(records, design.INSTALLED)
+    profile = design_feedback.regression_profile("jeans-store", lessons)
+    assert profile[0]["detects"] == ["card_buttons_misaligned", "card_heights_misaligned"]
+    result = design_feedback.check_regressions(
+        profile, {"critical": [], "warnings": [{"code": "card_heights_misaligned"}]},
+        {"issues": []})
+    assert result["passed"] is False
+    assert result["recurring"][0]["code"] == "uneven_cards"
+
+
+def test_unknown_design_issue_code_is_rejected():
+    with pytest.raises(ValueError):
+        design_feedback.normalize(
+            project_id="1", page_id="2", score_overall=5,
+            issue_codes=["make_it_pretty"])
+
+
 @pytest.mark.asyncio
 async def test_design_library_validator_reports_drift(monkeypatch):
     functions = {}

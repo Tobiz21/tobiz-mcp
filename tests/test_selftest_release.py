@@ -67,6 +67,7 @@ class FakeService:
             "design_library_drift_detection",
             "structured_design_feedback",
             "feedback_informed_template_selection",
+            "design_feedback_regression_gate",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

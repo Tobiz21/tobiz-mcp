@@ -1641,6 +1641,7 @@ class Service:
                 "design_library_drift_detection",
                 "structured_design_feedback",
                 "feedback_informed_template_selection",
+                "design_feedback_regression_gate",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
