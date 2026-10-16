@@ -17,6 +17,7 @@ from .domain import content as content_domain
 from .domain import composition as composition_domain
 from .domain import design_gate as design_gate_domain
 from .domain import image_audit as image_audit_domain
+from .domain import flex as flex_domain
 from .domain import site_plan as site_plan_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
@@ -71,6 +72,7 @@ READ_TOOLS = {
     "tobiz_delete_site_package", "tobiz_list_site_package_revisions",
     "tobiz_restore_site_package_revision",
     "tobiz_audit_claims", "tobiz_check_site_plan",
+    "tobiz_inspect_flex_block",
 }
 
 
@@ -672,6 +674,59 @@ def register(mcp: Any, service: Service) -> list[str]:
                 block.changed_paths.append(path)
         return {"block_id": block.block_id, "changed_fields": changed,
                 "change_hash": draft.change_hash()}
+
+    @tool("tobiz_inspect_flex_block", "Read-only inspection of a native TOBIZ Flex block (type 1600). "
+          "Returns its element inventory, responsive modes and deterministic overlap/mobile CTA issues. "
+          "Use this before editing Flex; it never changes the draft.")
+    async def tobiz_inspect_flex_block(project_id: Id | None = None, page_id: Id = "",
+                                       block_id: Id = "") -> dict[str, Any]:
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        block = draft.blocks.get(str(block_id))
+        if block is None:
+            raise errors.TobizError(errors.NOT_FOUND, f"Блок {block_id} не найден")
+        if block.type_id != "1600":
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Инструмент работает только с Flex type_id=1600")
+        return {"block_id": block.block_id, "change_hash": draft.change_hash(),
+                "validation": flex_domain.validate(block.values),
+                "flexblocks": block.values.get("flexblocks") or []}
+
+    @tool("tobiz_update_flex_block", "Safely replace only the native flexblocks model of an existing "
+          "TOBIZ type 1600 block. Preview is the default. Apply requires expected_hash from "
+          "tobiz_inspect_flex_block and stages validated values; tobiz_save_page renders and stores "
+          "the vendor Flex cache. Does not add custom HTML/CSS/JS.")
+    async def tobiz_update_flex_block(project_id: Id | None = None, page_id: Id = "",
+                                      block_id: Id = "", flexblocks: Any = None,
+                                      expected_hash: str = "", apply: bool = False) -> dict[str, Any]:
+        if apply and service.config.read_only:
+            raise errors.read_only()
+        project_id, _ = await service.resolve_page(project_id, page_id)
+        draft = await service.draft(project_id, page_id)
+        block = draft.blocks.get(str(block_id))
+        if block is None:
+            raise errors.TobizError(errors.NOT_FOUND, f"Блок {block_id} не найден")
+        if block.type_id != "1600":
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Инструмент работает только с Flex type_id=1600")
+        if not isinstance(flexblocks, (list, dict)):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "flexblocks должен быть массивом или объектом")
+        if apply and expected_hash != draft.change_hash():
+            raise errors.TobizError(errors.CONFLICT, "Черновик Flex изменился после чтения",
+                                    "Повторно вызовите tobiz_inspect_flex_block и перенесите правку")
+        candidate_values, changed = block_domain.apply_edits(
+            block.values, {"flexblocks": flexblocks}, replace=True)
+        validation = flex_domain.validate(candidate_values)
+        if validation["blockers"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Flex не прошел адаптивную проверку",
+                                    "Исправьте blockers; черновик не изменен", raw=validation)
+        if apply:
+            block.values = candidate_values
+            for path in changed:
+                if path not in block.changed_paths:
+                    block.changed_paths.append(path)
+        return {"preview": not apply, "block_id": block.block_id,
+                "changed_fields": changed, "validation": validation,
+                "change_hash": draft.change_hash(),
+                "next_action": "tobiz_save_page" if apply else "repeat_with_apply_true"}
 
     @tool("tobiz_page_content", "Read all editable content in one call with a draft hash. Does not change layout.")
     async def tobiz_page_content(project_id: Id | None = None, page_id: Id = "") -> dict[str, Any]:

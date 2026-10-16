@@ -171,6 +171,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_get_computed_styles`, `tobiz_screenshot_page` | реальные стили и полностраничные desktop/mobile PNG-снимки |
 | `tobiz_diagnose_interactions`, `tobiz_audit_page`, `tobiz_audit_summary` | формы, попапы, кнопки, ссылки, контраст, геометрия, остатки исходной тематики, JS-ошибки, изображения и объяснимая оценка качества из 10 |
 | `tobiz_add_block`, `tobiz_update_block`, `tobiz_delete_block`, `tobiz_move_block` | правки черновика |
+| `tobiz_inspect_flex_block`, `tobiz_update_flex_block` | безопасное чтение и изменение штатной модели Flex `1600` с проверкой desktop/mobile-геометрии, наложений и CTA; cache формируется рендерером TOBIZ при сохранении |
 | `tobiz_save_page` | запись блоков на сайт: рендер HTML, SaveBlocks, проверка вёрстки |
 | `tobiz_update_page` | правка параметров страницы (SEO, название, slug, og:image) — пишет сразу |
 | `tobiz_copy_page` | копия страницы вместе с блоками в тот же или другой проект |

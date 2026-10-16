@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .draft import Draft
+from . import flex as flex_domain
 
 
 def report(draft: Draft, block_types: dict[str, Any], rendered: dict[str, str],
@@ -34,6 +35,10 @@ def report(draft: Draft, block_types: dict[str, Any], rendered: dict[str, str],
                              "message": "Блок содержит пользовательский код"})
         if block.type_id == "1600":
             flex_count += 1
+            flex_validation = flex_domain.validate(block.values)
+            for issue in flex_validation["issues"]:
+                target = critical if issue["priority"] == "must_fix" else warnings
+                target.append({**issue, "block_id": block_id})
 
         anchor = str(block.values.get("anchor") or "").strip().lstrip("#")
         if anchor:

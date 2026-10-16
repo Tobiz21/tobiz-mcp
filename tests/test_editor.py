@@ -63,3 +63,16 @@ def test_flex_and_incomplete_form_require_review():
     codes = {item["code"] for item in result["warnings"]}
     assert result["verdict"] == "review"
     assert {"high_flex_share", "form_without_button"} <= codes
+
+
+def test_invalid_flex_mobile_layout_blocks_editor_roundtrip():
+    flex_values = {"flexblocks": [{
+        "id": "title", "type": "text",
+        "l": {"x": 0, "y": 0, "w": 400, "h": 80},
+    }]}
+    draft = make_draft([DraftBlock("10", "1600", flex_values)])
+    types = {"1600": SimpleNamespace(has_template=True)}
+    rendered = {"10": "<section>Полностью отрендерированный штатный Flex TOBIZ</section>"}
+    result = editor.report(draft, types, rendered, payload_for(draft, rendered))
+    assert result["verdict"] == "save_blocked"
+    assert "flex_mobile_layout_missing" in {item["code"] for item in result["critical"]}
