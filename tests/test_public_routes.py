@@ -28,15 +28,24 @@ async def test_public_page_url_uses_custom_domain_and_native_slug():
 
 
 @pytest.mark.asyncio
-async def test_public_page_url_uses_root_only_for_first_visible_page():
+async def test_public_page_url_rejects_ambiguous_empty_routes():
     project = Project("7", site_url="")
     first = Page("1", visible=True)
     second = Page("2", visible=True)
     service = service_for(project, [first, second], PageForm(text={"page_dir": ""}))
-    assert await service.public_page_url("7", "1") == "https://7.lp.tobiz.net/"
-    with pytest.raises(errors.TobizError) as captured:
-        await service.public_page_url("7", "2")
-    assert captured.value.code == errors.BAD_ARGUMENT
+    for page_id in ("1", "2"):
+        with pytest.raises(errors.TobizError) as captured:
+            await service.public_page_url("7", page_id)
+        assert captured.value.code == errors.BAD_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_public_page_url_resolves_unique_root_even_when_it_is_not_first():
+    project = Project("7", site_url="https://example.ru")
+    inner = Page("1", visible=True, slug="uslugi")
+    root = Page("2", visible=True, slug="")
+    service = service_for(project, [inner, root], PageForm(text={"page_dir": ""}))
+    assert await service.public_page_url("7", "2") == "https://example.ru/"
 
 
 @pytest.mark.asyncio

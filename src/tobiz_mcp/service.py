@@ -780,13 +780,16 @@ class Service:
         root = urlunsplit((parsed.scheme or "https", parsed.netloc, "/", "", ""))
         if slug:
             return root.rstrip("/") + "/" + slug + "/"
-        visible = [item for item in pages if item.visible]
-        if visible and visible[0].page_id == page.page_id:
+        root_candidates = [
+            item for item in pages
+            if item.visible and not str(item.slug or "").strip().strip("/")
+        ]
+        if len(root_candidates) == 1 and root_candidates[0].page_id == page.page_id:
             return root
         raise errors.TobizError(
             errors.BAD_ARGUMENT,
             f"У страницы {page_id} нет уникального публичного URL",
-            "Задайте page_dir или проверяйте первую видимую страницу проекта",
+            "Задайте уникальный page_dir или оставьте пустой URL только у главной страницы",
         )
 
     async def audit_catalog(self, project_id: str,
