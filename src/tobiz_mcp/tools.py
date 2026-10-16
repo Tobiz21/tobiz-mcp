@@ -28,6 +28,7 @@ from .domain import design as design_domain
 from .domain import design_feedback as design_feedback_domain
 from .domain import design_reference as design_reference_domain
 from .domain import layout as layout_domain
+from .domain import module_quality as module_quality_domain
 from .domain import refinement as refinement_domain
 from .service import Service
 
@@ -54,8 +55,9 @@ READ_TOOLS = {
     "tobiz_list_pages", "tobiz_page_summary", "tobiz_list_blocks", "tobiz_get_block",
     "tobiz_search_blocks", "tobiz_describe_block", "tobiz_verify_page", "tobiz_refresh_assets",
     "tobiz_page_info", "tobiz_audit_catalog", "tobiz_block_controls",
-    "tobiz_list_articles", "tobiz_get_article",
+    "tobiz_list_articles", "tobiz_get_article", "tobiz_audit_article",
     "tobiz_list_article_categories", "tobiz_list_products", "tobiz_get_product",
+    "tobiz_audit_product",
     "tobiz_list_product_categories",
     "tobiz_get_site_styles", "tobiz_get_computed_styles", "tobiz_screenshot_page",
     "tobiz_diagnose_interactions", "tobiz_audit_page", "tobiz_audit_summary", "tobiz_list_product_offers",
@@ -713,6 +715,15 @@ def register(mcp: Any, service: Service) -> list[str]:
         project = await service.project(project_id)
         return await service.module_get(project.project_id, "article", article_id)
 
+    @tool("tobiz_audit_article",
+          "Read-only publication audit for one TOBIZ article: title, excerpt, semantic HTML "
+          "structure, text depth, SEO, category and native images. Returns blockers and a 0-10 score.")
+    async def tobiz_audit_article(project_id: Id | None = None,
+                                  article_id: Id = "") -> dict[str, Any]:
+        project = await service.project(project_id)
+        article = await service.module_get(project.project_id, "article", article_id)
+        return module_quality_domain.audit_article(article)
+
     @tool("tobiz_list_article_categories", "Категории статей проекта.")
     async def tobiz_list_article_categories(project_id: Id | None = None) -> dict[str, Any]:
         project = await service.project(project_id)
@@ -788,6 +799,18 @@ def register(mcp: Any, service: Service) -> list[str]:
                                 product_id: Id = "") -> dict[str, Any]:
         project = await service.project(project_id)
         return await service.module_get(project.project_id, "item", product_id)
+
+    @tool("tobiz_audit_product",
+          "Read-only publication audit for one TOBIZ product: title, descriptions, SEO, price, "
+          "category, native images, video URLs and offer uniqueness. Set allow_price_on_request=true "
+          "only when the commercial model explicitly omits a public price.")
+    async def tobiz_audit_product(project_id: Id | None = None, product_id: Id = "",
+                                  allow_price_on_request: bool = False) -> dict[str, Any]:
+        project = await service.project(project_id)
+        product = await service.module_get(project.project_id, "item", product_id)
+        offers = await service.product_offers(project.project_id, str(product_id))
+        return module_quality_domain.audit_product(
+            product, offers, allow_price_on_request=allow_price_on_request)
 
     @tool("tobiz_list_product_categories", "Категории интернет-магазина проекта.")
     async def tobiz_list_product_categories(project_id: Id | None = None) -> dict[str, Any]:

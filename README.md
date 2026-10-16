@@ -266,9 +266,9 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_discard_changes`, `tobiz_verify_page` | откат черновика, проверка публичной вёрстки |
 | `tobiz_upload_image`, `tobiz_set_block_image` | загрузка изображения и подстановка в поле; ответ содержит измеренные width/height, формат, aspect ratio, SHA-256 и готовый `media_asset` |
 | `tobiz_refresh_assets` | перекачать библиотеку блоков проекта |
-| `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article` | штатный редактор статей: тексты, URL, SEO, публикация, категории |
+| `tobiz_list_articles`, `tobiz_get_article`, `tobiz_create_article`, `tobiz_update_article`, `tobiz_delete_article`, `tobiz_audit_article` | штатный редактор статей и проверка готовности публикации: тексты, структура, URL, SEO, изображения, категории |
 | `tobiz_upload_article_image`, `tobiz_sort_article_images`, `tobiz_list_article_categories` | изображения, их порядок и категории статей |
-| `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_delete_product` | управление товарами: цены, остатки, метки, размеры, SEO и видео |
+| `tobiz_list_products`, `tobiz_get_product`, `tobiz_create_product`, `tobiz_update_product`, `tobiz_delete_product`, `tobiz_audit_product` | управление товарами и проверка готовности публикации: контент, цена, варианты, SEO, изображения и видео |
 | `tobiz_upload_product_image`, `tobiz_sort_product_images`, `tobiz_list_product_categories` | галерея, порядок фото и категории товаров |
 | `tobiz_list_product_offers`, `tobiz_get_product_offer`, `tobiz_create_product_offer`, `tobiz_update_product_offer`, `tobiz_delete_product_offer` | варианты товара: название, артикул, цена, остаток и фото |
 
@@ -474,6 +474,12 @@ height, aspect ratio и sha256 вручную - передавайте `media_as
 а видео вставляется штатным `iframe`. В товаре доступны три поля видео (`video1`-`video3`) и
 штатные варианты (offers). Глобальные стили страницы хранятся в `page_config`: их правки попадают
 в черновик и применяются через `tobiz_save_page`, как обычные блоки.
+
+После заполнения статьи запускайте `tobiz_audit_article`, после заполнения товара и вариантов -
+`tobiz_audit_product`. Публикация считается готовой только при `ready_for_publication=true`:
+инструменты проверяют не только SEO, но и содержательность, изображения, категории, цену и
+уникальность вариантов. `allow_price_on_request=true` допустим только для заранее согласованной
+модели продажи без публичной цены.
 
 ## Полезно знать
 
