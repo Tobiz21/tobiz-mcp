@@ -104,6 +104,7 @@ class FakeService:
             "article_publication_quality_audit",
             "product_publication_quality_audit",
             "article_product_preflight",
+            "transactional_article_product_publication",
             "multipage_project_quality_audit",
             "four_workflow_control_scenarios",
             "native_multipage_site_planning",

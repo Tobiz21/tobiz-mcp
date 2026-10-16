@@ -165,3 +165,61 @@ async def test_module_preflight_tools_do_not_access_tobiz():
         fields=product_value, category_ids=["4"], image_count=1)
     assert article_response["data"]["ready_for_publication"] is True
     assert product_response["data"]["ready_for_publication"] is True
+
+
+@pytest.mark.asyncio
+async def test_publish_article_package_previews_without_writing():
+    service = SimpleNamespace(config=SimpleNamespace(read_only=False))
+    value = article()
+    value.pop("images")
+    value.pop("categories")
+    response = await registered_functions(service)["tobiz_publish_article_package"](
+        fields=value, category_ids=["2"], images=[{"path": "cover.jpg"}], apply=False)
+    assert response["ok"] is True
+    assert response["data"]["ready_for_apply"] is True
+    assert response["data"]["dry_run"] is True
+
+
+@pytest.mark.asyncio
+async def test_publish_article_package_builds_and_audits_complete_entity():
+    value = article()
+    fields = {key: item for key, item in value.items()
+              if key not in {"id", "images", "categories"}}
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_create=AsyncMock(return_value={"id": "11"}),
+        module_update=AsyncMock(),
+        module_upload_image=AsyncMock(),
+        module_get=AsyncMock(return_value={**value, "id": "11"}),
+        module_delete=AsyncMock(),
+    )
+    response = await registered_functions(service)["tobiz_publish_article_package"](
+        project_id="7", fields=fields, category_ids=["2"],
+        images=[{"path": "cover.jpg"}], apply=True)
+    assert response["ok"] is True
+    assert response["data"]["published"] is True
+    service.module_delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_publish_product_package_rolls_back_on_offer_failure():
+    value = product()
+    fields = {key: item for key, item in value.items()
+              if key not in {"id", "images", "categories"}}
+    offers = [{"title": "Высота 6 м", "vendor_code": "T-6", "price": 24900}]
+    service = SimpleNamespace(
+        config=SimpleNamespace(read_only=False),
+        project=AsyncMock(return_value=SimpleNamespace(project_id="7")),
+        module_create=AsyncMock(return_value={"id": "12"}),
+        module_update=AsyncMock(),
+        module_upload_image=AsyncMock(),
+        product_offer_create=AsyncMock(side_effect=RuntimeError("offer failed")),
+        module_delete=AsyncMock(return_value={"deleted": True}),
+    )
+    response = await registered_functions(service)["tobiz_publish_product_package"](
+        project_id="7", fields=fields, category_ids=["4"],
+        images=[{"path": "product.jpg"}], offers=offers, apply=True)
+    assert response["ok"] is False
+    await_args = service.module_delete.await_args.args
+    assert await_args == ("7", "item", "12")

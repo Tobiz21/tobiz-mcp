@@ -758,6 +758,57 @@ def register(mcp: Any, service: Service) -> list[str]:
         return module_quality_domain.preflight_article(
             fields or {}, list(category_ids or []), image_count)
 
+    @tool("tobiz_publish_article_package",
+          "Preview or atomically publish a complete native TOBIZ article. The package contains "
+          "final fields, category_ids and images (each image accepts path or content_base64 plus "
+          "file_name). apply=false only validates. apply=true creates, fills and uploads, then "
+          "re-reads and audits the article; any failure deletes the incomplete article.")
+    async def tobiz_publish_article_package(
+            project_id: Id | None = None, fields: dict[str, Any] | None = None,
+            category_ids: list[Id] | None = None,
+            images: list[dict[str, Any]] | None = None,
+            apply: bool = False) -> dict[str, Any]:
+        final_fields = dict(fields or {})
+        final_categories = list(category_ids or [])
+        final_images = list(images or [])
+        preflight = module_quality_domain.preflight_article(
+            final_fields, final_categories, len(final_images))
+        plan = {"kind": "article", "fields": final_fields,
+                "category_ids": final_categories, "image_count": len(final_images),
+                "preflight": preflight}
+        if not apply:
+            return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
+                    "plan": plan}
+        if not preflight["ready_for_publication"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Пакет статьи не готов к публикации",
+                                    "Исправьте blockers из preflight", raw=preflight)
+        project = await service.project(project_id)
+        entity_id = ""
+        try:
+            article = await service.module_create(project.project_id, "article")
+            entity_id = str(article["id"])
+            await service.module_update(project.project_id, "article", entity_id,
+                                        final_fields, final_categories)
+            for image in final_images:
+                await service.module_upload_image(
+                    project.project_id, "article", entity_id, image.get("path"),
+                    image.get("content_base64"), image.get("file_name"))
+            article = await service.module_get(project.project_id, "article", entity_id)
+            audit = module_quality_domain.audit_article(article)
+            if not audit["ready_for_publication"]:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "Статья создана, но не прошла итоговый аудит",
+                                        "Неполная статья удалена автоматически", raw=audit)
+            return {"published": True, "article": article, "audit": audit}
+        except Exception:
+            if entity_id:
+                try:
+                    await service.module_delete(project.project_id, "article", entity_id)
+                except Exception:  # исходная ошибка важнее ошибки отката
+                    logger.exception("не удалось откатить статью %s", entity_id)
+            raise
+
     @tool("tobiz_list_article_categories", "Категории статей проекта.")
     async def tobiz_list_article_categories(project_id: Id | None = None) -> dict[str, Any]:
         project = await service.project(project_id)
@@ -857,6 +908,64 @@ def register(mcp: Any, service: Service) -> list[str]:
         return module_quality_domain.preflight_product(
             fields or {}, list(category_ids or []), list(offers or []), image_count,
             allow_price_on_request=allow_price_on_request)
+
+    @tool("tobiz_publish_product_package",
+          "Preview or atomically publish a complete native TOBIZ product with categories, images "
+          "and offers. apply=false validates only. apply=true creates the full product, re-reads it "
+          "and runs the publication audit; any failure deletes the incomplete product.")
+    async def tobiz_publish_product_package(
+            project_id: Id | None = None, fields: dict[str, Any] | None = None,
+            category_ids: list[Id] | None = None,
+            images: list[dict[str, Any]] | None = None,
+            offers: list[dict[str, Any]] | None = None,
+            allow_price_on_request: bool = False, apply: bool = False) -> dict[str, Any]:
+        final_fields = dict(fields or {})
+        final_categories = list(category_ids or [])
+        final_images = list(images or [])
+        final_offers = [dict(offer) for offer in (offers or [])]
+        preflight = module_quality_domain.preflight_product(
+            final_fields, final_categories, final_offers, len(final_images),
+            allow_price_on_request=allow_price_on_request)
+        plan = {"kind": "product", "fields": final_fields,
+                "category_ids": final_categories, "image_count": len(final_images),
+                "offers": final_offers, "preflight": preflight}
+        if not apply:
+            return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
+                    "plan": plan}
+        if not preflight["ready_for_publication"]:
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    "Пакет товара не готов к публикации",
+                                    "Исправьте blockers из preflight", raw=preflight)
+        project = await service.project(project_id)
+        entity_id = ""
+        try:
+            product = await service.module_create(project.project_id, "item")
+            entity_id = str(product["id"])
+            await service.module_update(project.project_id, "item", entity_id,
+                                        final_fields, final_categories)
+            for image in final_images:
+                await service.module_upload_image(
+                    project.project_id, "item", entity_id, image.get("path"),
+                    image.get("content_base64"), image.get("file_name"))
+            for offer in final_offers:
+                await service.product_offer_create(project.project_id, entity_id, offer)
+            product = await service.module_get(project.project_id, "item", entity_id)
+            saved_offers = await service.product_offers(project.project_id, entity_id)
+            audit = module_quality_domain.audit_product(
+                product, saved_offers, allow_price_on_request=allow_price_on_request)
+            if not audit["ready_for_publication"]:
+                raise errors.TobizError(errors.SAVE_FAILED,
+                                        "Товар создан, но не прошел итоговый аудит",
+                                        "Неполный товар удален автоматически", raw=audit)
+            return {"published": True, "product": product, "offers": saved_offers,
+                    "audit": audit}
+        except Exception:
+            if entity_id:
+                try:
+                    await service.module_delete(project.project_id, "item", entity_id)
+                except Exception:  # исходная ошибка важнее ошибки отката
+                    logger.exception("не удалось откатить товар %s", entity_id)
+            raise
 
     @tool("tobiz_list_product_categories", "Категории интернет-магазина проекта.")
     async def tobiz_list_product_categories(project_id: Id | None = None) -> dict[str, Any]:
