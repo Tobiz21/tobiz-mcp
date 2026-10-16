@@ -487,6 +487,8 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
     }
     issues = []
     lengths: dict[tuple[int, str], list[int]] = {}
+    copy_uses: dict[str, list[dict[str, Any]]] = {}
+    draft_mode = brief.get("allow_placeholders") is True
     for slot in recipe.get("slots") or []:
         if not isinstance(slot, dict):
             continue
@@ -515,6 +517,20 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
                            "action": "Назвать конкретное действие пользователя в контексте секции."})
         if role in {"card_title", "body"}:
             lengths.setdefault((int(key[0]), role), []).append(len(value))
+        if role not in {"button", "link"} and len(value) >= 12:
+            normalized = re.sub(r"[^0-9a-zа-я]+", " ", value.lower().replace("ё", "е"))
+            normalized = re.sub(r"\s+", " ", normalized).strip()
+            if normalized:
+                copy_uses.setdefault(normalized, []).append({
+                    "block_index": key[0], "path": key[1], "field_role": role,
+                })
+    for value, uses in copy_uses.items():
+        if len(uses) > 1 and len({item["block_index"] for item in uses}) > 1:
+            issues.append({
+                "priority": "improve" if draft_mode else "must_fix",
+                "code": "duplicate_recipe_copy", "text": value, "uses": uses,
+                "action": "Раскрыть назначение каждой секции своим текстом без копирования абзацев.",
+            })
     for (block_index, role), values in lengths.items():
         threshold = 35 if role == "card_title" else 110
         if len(values) > 1 and max(values) - min(values) > threshold:
@@ -532,7 +548,6 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
                        "action": "Заменить все meaningful-поля, отмеченные в missing и unchanged."})
     evidence = plan.get("content_brief") or {}
     evidence_coverage = validate_evidence_coverage(plan, recipe)
-    draft_mode = brief.get("allow_placeholders") is True
     issues.extend({
         **item,
         "priority": "improve" if draft_mode else "must_fix",

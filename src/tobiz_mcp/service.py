@@ -1706,6 +1706,7 @@ class Service:
                 "brief_to_copy_evidence_traceability",
                 "grounded_evidence_mapping",
                 "evidence_aware_recipe_verdict",
+                "cross_section_copy_deduplication",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

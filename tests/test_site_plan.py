@@ -389,6 +389,42 @@ def test_recipe_preflight_downgrades_evidence_gap_for_explicit_prototype():
     assert issue['priority'] == 'improve'
 
 
+def test_recipe_preflight_blocks_duplicate_copy_across_sections():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    repeated = 'Новая программа занятий'
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': repeated},
+        {'block_index': 1, 'path': '/title', 'value': repeated},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    issue = next(item for item in result['issues'] if item['code'] == 'duplicate_recipe_copy')
+    assert result['ready_for_build'] is False
+    assert issue['priority'] == 'must_fix'
+    assert len(issue['uses']) == 2
+
+
+def test_recipe_preflight_allows_repeated_copy_only_in_explicit_prototype():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.',
+             'allow_placeholders': True}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    repeated = 'Новая программа занятий'
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': repeated},
+        {'block_index': 1, 'path': '/title', 'value': repeated},
+    ]}
+    result = site_plan.validate_recipe(brief, plan, blueprint, recipe)
+    issue = next(item for item in result['issues'] if item['code'] == 'duplicate_recipe_copy')
+    assert issue['priority'] == 'improve'
+    assert 'duplicate_recipe_copy' not in {item['code'] for item in result['blockers']}
+
+
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики'}
