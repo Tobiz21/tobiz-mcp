@@ -695,6 +695,7 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
             continue
         assets = group.get("assets") if isinstance(group.get("assets"), list) else []
         paths = list(spec.get("paths") or [])
+        group_filenames: dict[str, list[str]] = {}
         if len(assets) != len(paths):
             issues.append({"priority": "must_fix", "code": "media_asset_count_mismatch",
                            "block_index": key[0], "path_pattern": key[1],
@@ -755,7 +756,17 @@ def validate_media_recipe(plan: dict[str, Any], blueprint: dict[str, Any],
                                "shot_role": spec.get("shot_role"),
                                "action": "Визуально проверить кадр и подтвердить соответствие смыслу секции."})
             filenames.setdefault(filename.lower(), []).append(key)
+            if filename:
+                group_filenames.setdefault(filename.lower(), []).append(paths[index])
             assignments.append({"block_index": key[0], "path": paths[index], "value": filename})
+        for filename, used_paths in group_filenames.items():
+            if len(used_paths) > 1:
+                issues.append({
+                    "priority": "must_fix", "code": "media_reused_within_group",
+                    "block_index": key[0], "path_pattern": key[1],
+                    "filename": filename, "paths": used_paths,
+                    "action": "Назначить отдельное содержательное изображение каждому фотослоту блока.",
+                })
         if len(ratios) > 1 and max(ratios) - min(ratios) > .08:
             issues.append({"priority": "must_fix", "code": "media_group_ratios_inconsistent",
                            "block_index": key[0], "path_pattern": key[1],

@@ -271,6 +271,26 @@ def test_media_preflight_blocks_placeholders_bad_ratio_and_missing_safe_area():
     assert result['ready_for_build'] is False
 
 
+def test_media_preflight_blocks_reused_image_inside_card_group():
+    blueprint = {'photo_slots': [{
+        'block_index': 2, 'path_pattern': '/items/0/image', 'role': 'catalog_image',
+        'paths': ['/items/0/image', '/items/1/image'], 'slots': 2,
+    }]}
+    repeated = {
+        'filename': 'same-card.webp', 'width': 1000, 'height': 1000,
+        'subject': 'Комплект оборудования на белом фоне',
+        'section_fit_confirmed': True,
+    }
+    result = site_plan.validate_media_recipe({'plan_id': 'media'}, blueprint, {'groups': [{
+        'block_index': 2, 'path_pattern': '/items/0/image',
+        'assets': [dict(repeated), dict(repeated)],
+    }]})
+    assert result['ready_for_build'] is False
+    issue = next(item for item in result['blockers']
+                 if item['code'] == 'media_reused_within_group')
+    assert issue['paths'] == ['/items/0/image', '/items/1/image']
+
+
 def test_unified_preflight_accepts_complete_quality_package():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.', 'facts': {

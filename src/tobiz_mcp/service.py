@@ -1703,6 +1703,7 @@ class Service:
                 "goal_specific_architecture_gate",
                 "native_conversion_contract_gate",
                 "semantic_media_assignment_gate",
+                "within_group_media_deduplication",
                 "brief_to_copy_evidence_traceability",
                 "grounded_evidence_mapping",
                 "evidence_aware_recipe_verdict",
