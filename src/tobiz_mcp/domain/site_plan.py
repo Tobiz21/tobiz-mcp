@@ -596,7 +596,7 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
             button_values.append({"block_index": key[0], "path": key[1], "value": value})
         if role in {"card_title", "body"}:
             lengths.setdefault((int(key[0]), role), []).append(len(value))
-        if role not in {"button", "link"} and len(value) >= 12:
+        if role not in {"button", "link", "form_label"} and len(value) >= 12:
             normalized = re.sub(r"[^0-9a-zа-я]+", " ", value.lower().replace("ё", "е"))
             normalized = re.sub(r"\s+", " ", normalized).strip()
             if normalized:
@@ -614,7 +614,13 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
     primary_cta = str(brief.get("primary_cta") or brief.get("cta")
                       or brief.get("action") or facts.get("primary_cta")
                       or facts.get("cta") or facts.get("action") or "").strip()
-    if primary_cta and button_values:
+    if primary_cta and not button_values:
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix",
+            "code": "primary_cta_missing_from_recipe", "primary_cta": primary_cta,
+            "action": "Заполнить хотя бы одну штатную кнопку согласованным основным действием.",
+        })
+    elif primary_cta and button_values:
         def cta_tokens(value: str) -> set[str]:
             ignored = {"для", "или", "это", "как", "ваш", "ваша", "ваше", "сейчас"}
             return {token for token in re.findall(

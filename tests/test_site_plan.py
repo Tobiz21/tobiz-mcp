@@ -690,6 +690,42 @@ def test_recipe_preflight_requires_brief_primary_cta_in_native_button():
     assert 'primary_cta_not_used' in {item['code'] for item in result['blockers']}
 
 
+def test_recipe_preflight_requires_at_least_one_primary_cta_button_slot():
+    blueprint = {'recipe': {'types': ['306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'kind': 'text',
+         'role': 'section_title', 'current': 'Оставьте заявку'},
+        {'block_index': 0, 'path': '/form1/2/title', 'kind': 'text',
+         'role': 'button', 'current': 'Отправить'},
+    ]}}
+    plan = {'plan_id': 'cta', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['306'], 'slots': [{
+        'block_index': 0, 'path': '/title', 'value': 'Проверьте свободное время',
+    }]}
+    result = site_plan.validate_recipe(
+        {'primary_cta': 'Узнать свободное время'}, plan, blueprint, recipe)
+    assert result['ready_for_build'] is False
+    assert 'primary_cta_missing_from_recipe' in {
+        item['code'] for item in result['blockers']}
+
+
+def test_recipe_preflight_allows_repeated_native_form_labels():
+    blueprint = {'recipe': {'types': ['306', '306'], 'slots': [
+        {'block_index': 0, 'path': '/form1/0/placeholder', 'kind': 'text',
+         'role': 'form_label', 'current': 'Ваш номер телефона'},
+        {'block_index': 1, 'path': '/form1/0/placeholder', 'kind': 'text',
+         'role': 'form_label', 'current': 'Ваш номер телефона'},
+    ]}}
+    plan = {'plan_id': 'forms', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['306', '306'], 'slots': [
+        {'block_index': 0, 'path': '/form1/0/placeholder', 'value': 'Ваш телефон'},
+        {'block_index': 1, 'path': '/form1/0/placeholder', 'value': 'Ваш телефон'},
+    ]}
+    result = site_plan.validate_recipe({}, plan, blueprint, recipe)
+    assert 'duplicate_recipe_copy' not in {item['code'] for item in result['issues']}
+
+
 def test_recipe_preflight_accepts_inflected_primary_cta_wording():
     blueprint = {'recipe': {'types': ['306'], 'slots': [{
         'block_index': 0, 'path': '/btn1/title', 'kind': 'text',

@@ -1718,6 +1718,7 @@ class Service:
                 "mobile_critical_copy_length_gate",
                 "native_form_field_role_profiling",
                 "complete_native_form_submission_gate",
+                "required_primary_cta_recipe_slot",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,
