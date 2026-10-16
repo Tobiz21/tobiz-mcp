@@ -1721,6 +1721,7 @@ class Service:
                 "required_primary_cta_recipe_slot",
                 "required_contact_field_gate",
                 "labeled_native_form_field_gate",
+                "brief_aligned_required_form_fields",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

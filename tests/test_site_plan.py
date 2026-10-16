@@ -294,6 +294,37 @@ def test_conversion_readiness_accepts_placeholder_when_title_is_hidden():
     assert result['forms'][0]['unlabeled_fields'] == []
 
 
+def test_conversion_readiness_rejects_unrequested_mandatory_field():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': 'Ваше имя'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
+            {'type': 'email', 'title': 'Email', 'required': 1},
+            {'type': 'btn', 'title': 'Оставить заявку'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is False
+    assert result['required_fields'] == ['name', 'phone']
+    assert result['forms'][0]['unexpected_mandatory_fields'] == ['email']
+    assert 'unexpected_required_form_fields' in {
+        item['code'] for item in result['blockers']}
+
+
+def test_conversion_readiness_allows_optional_unrequested_field():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': 'Ваше имя'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
+            {'type': 'textarea', 'title': 'Комментарий', 'required': 0},
+            {'type': 'btn', 'title': 'Оставить заявку'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is True
+    assert result['forms'][0]['unexpected_mandatory_fields'] == []
+
+
 def test_conversion_readiness_rejects_template_without_native_form():
     source = Draft('1', '2', blocks={
         '1': DraftBlock('1', '1154', {'title': 'Первый экран'}),

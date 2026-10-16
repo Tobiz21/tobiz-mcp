@@ -405,6 +405,9 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                 and str(item.get("required") or "").strip().lower()
                 in {"1", "true", "yes", "on"}
             ]
+            unexpected_mandatory = sorted({
+                role for role in mandatory_fields if role not in required
+            })
             has_required_contact = (not required_contacts or
                                     any(role in mandatory_fields for role in required_contacts))
             forms.append({
@@ -418,11 +421,13 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                 "duplicate_fields": duplicate_fields,
                 "unlabeled_fields": unlabeled_fields,
                 "mandatory_fields": mandatory_fields,
+                "unexpected_mandatory_fields": unexpected_mandatory,
                 "has_required_contact": has_required_contact,
                 "name_before_phone": (name_index >= 0 and phone_index >= 0
                                       and name_index < phone_index),
                 "matches_contract": (not missing and has_labeled_button and not duplicate_fields
                                      and not unlabeled_fields
+                                     and not unexpected_mandatory
                                      and has_required_contact
                                      and ("phone" not in required or name_index < phone_index)),
             })
@@ -485,6 +490,16 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                       for item in optional_contact_forms],
             "action": "Сделать телефон или email обязательным штатной настройкой поля формы.",
         })
+    overreaching_forms = [item for item in forms if item["unexpected_mandatory_fields"]]
+    if overreaching_forms:
+        blockers.append({
+            "code": "unexpected_required_form_fields",
+            "required_fields": required,
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"],
+                       "fields": item["unexpected_mandatory_fields"]}
+                      for item in overreaching_forms],
+            "action": "Убрать обязательность у полей, которых нет в согласованном брифе.",
+        })
     return {
         "ready": not blockers,
         "required_fields": required,
@@ -492,7 +507,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         "matching_forms": len(matching),
         "blockers": blockers,
         "rule": ("Использовать штатную форму; поле «Имя» идет перед «Телефоном», "
-                 "поля подписаны и не дублируются, кнопка видима, а контакт обязателен."),
+                 "поля подписаны, соответствуют брифу, кнопка видима, а контакт обязателен."),
     }
 
 
