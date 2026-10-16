@@ -1640,6 +1640,7 @@ class Service:
                 "native_flex_inspection_and_editing",
                 "design_library_drift_detection",
                 "structured_design_feedback",
+                "feedback_informed_template_selection",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

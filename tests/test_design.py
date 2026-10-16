@@ -106,7 +106,8 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_check_site_plan',
             'tobiz_inspect_flex_block', 'tobiz_audit_flex_page', 'tobiz_update_flex_block',
             'tobiz_copy_native_block', 'tobiz_validate_design_library',
-            'tobiz_record_design_feedback', 'tobiz_list_design_feedback'} <= set(names)
+            'tobiz_record_design_feedback', 'tobiz_list_design_feedback',
+            'tobiz_design_lessons'} <= set(names)
 
 
 def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():
@@ -136,6 +137,24 @@ def test_design_feedback_local_roundtrip(tmp_path):
     assert result["count"] == 1
     assert result["average_score"] == 4
     assert result["records"][0]["feedback_id"] == first["feedback_id"]
+
+
+def test_design_feedback_reorders_templates_with_bounded_evidence():
+    base = design.select({"industry": "магазин одежды"}, top_k=9)
+    lessons = design_feedback.summarize([
+        {"project_id": "433136", "page_id": "1221168", "score_overall": 2,
+         "issues": ["Слабая мобильная верстка"], "corrections": ["Сократить заголовки"]},
+        {"project_id": "433136", "page_id": "1221168", "score_overall": 2,
+         "issues": ["Слабая мобильная верстка"], "corrections": []},
+        {"project_id": "433136", "page_id": "1221168", "score_overall": 2,
+         "issues": [], "corrections": []},
+    ], design.INSTALLED)
+    adjusted = design_feedback.apply_to_selection(base, lessons, top_k=9)
+    jeans = next(item for item in [adjusted["recommended"], *adjusted["alternatives"]]
+                 if item["id"] == "jeans-store")
+    assert jeans["feedback"]["adjustment"] == -6
+    assert lessons["common_issues"][0] == {"text": "Слабая мобильная верстка", "count": 2}
+    assert any("пользовательская оценка" in risk for risk in jeans["risks"])
 
 
 @pytest.mark.asyncio

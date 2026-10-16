@@ -61,7 +61,7 @@ READ_TOOLS = {
     "tobiz_get_product_offer",
     "tobiz_list_page_backups",
     "tobiz_design_library", "tobiz_select_design",
-    "tobiz_validate_design_library", "tobiz_list_design_feedback",
+    "tobiz_validate_design_library", "tobiz_list_design_feedback", "tobiz_design_lessons",
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
     "tobiz_layout_registry", "tobiz_repair_layout",
@@ -146,6 +146,23 @@ def register(mcp: Any, service: Service) -> list[str]:
             return func
         return decorator
 
+    def design_lessons() -> dict[str, Any]:
+        stored = service.list_design_feedback(limit=500)
+        return design_feedback_domain.summarize(stored["records"], design_domain.INSTALLED)
+
+    def select_with_feedback(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
+        base = design_domain.select(brief, top_k=len(design_domain.INSTALLED))
+        return design_feedback_domain.apply_to_selection(base, design_lessons(), top_k)
+
+    def select_native_with_feedback(brief: dict[str, Any], max_flex_share: float = .3
+                                    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        selection = select_with_feedback(brief, top_k=len(design_domain.INSTALLED))
+        ranked = [selection["recommended"], *selection["alternatives"]]
+        eligible = [item for item in ranked if float(item.get("flex_share") or 0) <= max_flex_share]
+        if not eligible:
+            raise ValueError(f"no verified template with Flex share <= {max_flex_share}")
+        return selection, eligible[0]
+
     # --- служебные ---
 
     @tool("tobiz_login",
@@ -217,6 +234,12 @@ def register(mcp: Any, service: Service) -> list[str]:
                                          limit: int = 100) -> dict[str, Any]:
         return service.list_design_feedback(project_id, page_id, limit)
 
+    @tool("tobiz_design_lessons",
+          "Aggregate locally stored human feedback into template scores, recurring design issues and "
+          "proven corrections. Read-only; used automatically by template selection and site planning.")
+    async def tobiz_design_lessons() -> dict[str, Any]:
+        return design_lessons()
+
     @tool("tobiz_record_design_feedback",
           "Record explicit human feedback about a page for future design decisions. Preview by default; "
           "apply=true writes a local privacy-safe JSONL record, never changes the TOBIZ site.")
@@ -246,7 +269,7 @@ def register(mcp: Any, service: Service) -> list[str]:
           "alternatives, risks and visual references; does not copy or change a site.")
     async def tobiz_select_design(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         try:
-            return design_domain.select(brief, top_k)
+            return select_with_feedback(brief, top_k)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
 
@@ -1151,7 +1174,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         if goal and goal not in composition_domain.GOALS:
             raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
         try:
-            selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+            selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
@@ -1533,7 +1556,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             brief: dict[str, Any], plan_id: str, project_id: Id | None = None,
             page_id: Id = "", source_terms: list[str] | None = None,
             screenshots: bool = True) -> dict[str, Any]:
-        selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+        selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
         source_draft = await service.draft(selected["project_id"], selected["page_id"])
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
@@ -1588,7 +1611,7 @@ def register(mcp: Any, service: Service) -> list[str]:
         if not isinstance(brief, dict):
             raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
         try:
-            selection, selected = design_domain.select_native(brief, max_flex_share=0.3)
+            selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
         if apply and not str(target_project_id or "").strip():

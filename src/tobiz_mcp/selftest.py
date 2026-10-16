@@ -141,6 +141,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "native_flex_inspection_and_editing",
         "design_library_drift_detection",
         "structured_design_feedback",
+        "feedback_informed_template_selection",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {
