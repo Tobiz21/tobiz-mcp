@@ -72,6 +72,7 @@ READ_TOOLS = {
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
     "tobiz_validate_conversion_path",
+    "tobiz_start_site",
     "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
@@ -1425,6 +1426,43 @@ def register(mcp: Any, service: Service) -> list[str]:
             "plan_id": plan["plan_id"],
             "template": plan["template"],
             "conversion": plan["conversion_readiness"],
+        }
+
+    @tool("tobiz_start_site", "Start a new TOBIZ site workflow in one read-only call. If the brief "
+          "is incomplete, returns only the required client questions without accessing TOBIZ. Otherwise "
+          "selects an available verified template, checks architecture and native forms, creates a clean "
+          "resumable package and returns exactly one next action. No page is created.")
+    async def tobiz_start_site(brief: dict[str, Any], goal: str = "",
+                               save_checkpoint: bool = True) -> dict[str, Any]:
+        if not isinstance(brief, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
+        if goal and goal not in composition_domain.GOALS:
+            raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
+        readiness = site_plan_domain.brief_readiness(brief, goal or None)
+        if not readiness["ready_for_quality_build"] and not readiness["can_continue_with_placeholders"]:
+            return {
+                "status": "brief_required",
+                "brief_readiness": readiness,
+                "next_action": "answer_brief_questions",
+                "questions": readiness["questions"],
+            }
+        package = await tobiz_prepare_site_package(brief, goal, save_checkpoint)
+        gates = package.get("gates") or {}
+        failed = [name for name in ("architecture", "conversion")
+                  if gates.get(name) and not gates[name].get("ready")]
+        if failed:
+            return {
+                "status": "template_review_required",
+                "failed_gates": failed,
+                "gates": gates,
+                "package": package,
+                "next_action": "register_or_select_better_native_template",
+            }
+        return {
+            "status": "ready_to_fill",
+            "gates": gates,
+            "package": package,
+            "next_action": "tobiz_fill_package_content",
         }
 
     @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "

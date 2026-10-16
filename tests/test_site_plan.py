@@ -374,6 +374,9 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     assert package['schema_version'] == 1
     assert package['brief'] == brief
     assert package['package_id'] == f"{plan['plan_id']}:v1"
+    assert package['gates']['brief'] == plan['brief_readiness']
+    assert package['gates']['architecture'] == plan['architecture_readiness']
+    assert package['gates']['conversion'] == plan['conversion_readiness']
     assert package['recipe']['types'] == ['1154', '306']
     assert all(slot['value'] == '' for slot in package['recipe']['slots'])
     assert all(slot['evidence_codes'] == [] for slot in package['recipe']['slots'])

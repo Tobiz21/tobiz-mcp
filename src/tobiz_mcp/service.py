@@ -1704,6 +1704,7 @@ class Service:
                 "native_conversion_contract_gate",
                 "semantic_media_assignment_gate",
                 "brief_to_copy_evidence_traceability",
+                "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

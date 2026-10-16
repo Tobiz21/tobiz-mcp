@@ -7,6 +7,12 @@ from tobiz_mcp.service import Service
 from tobiz_mcp.tools import register
 
 
+def finish(coroutine):
+    with pytest.raises(StopIteration) as completed:
+        coroutine.send(None)
+    return completed.value.value
+
+
 def test_library_contains_verified_installed_sources_and_references():
     result = design.library()
     assert len(result['installed']) == 9
@@ -161,7 +167,9 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_refine_design', 'tobiz_audit_composition',
             'tobiz_compare_design_reference', 'tobiz_release_design_gate',
             'tobiz_audit_images'} <= set(names)
-    assert {'tobiz_plan_site', 'tobiz_compile_site_content', 'tobiz_validate_site_recipe',
+    assert {'tobiz_plan_site', 'tobiz_validate_brief', 'tobiz_validate_site_architecture',
+            'tobiz_validate_conversion_path', 'tobiz_start_site',
+            'tobiz_compile_site_content', 'tobiz_validate_site_recipe',
             'tobiz_validate_media_recipe',
             'tobiz_prepare_site_package',
             'tobiz_fill_package_content',
@@ -179,6 +187,25 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_record_design_feedback', 'tobiz_list_design_feedback',
             'tobiz_design_lessons', 'tobiz_refresh_design_passport',
             'tobiz_register_design_template', 'tobiz_discover_design_candidates'} <= set(names)
+
+
+def test_start_site_returns_questions_before_accessing_tobiz():
+    functions = {}
+
+    class MCP:
+        def tool(self, name, description):
+            def capture(fn):
+                functions[name] = fn
+                return fn
+            return capture
+
+    register(MCP(), SimpleNamespace(config=SimpleNamespace(read_only=False)))
+    result = finish(functions['tobiz_start_site'](
+        brief={'industry': 'Онлайн-школа математики'}))
+    assert result['ok'] is True
+    assert result['data']['status'] == 'brief_required'
+    assert result['data']['next_action'] == 'answer_brief_questions'
+    assert len(result['data']['questions']) == 5
 
 
 def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():
