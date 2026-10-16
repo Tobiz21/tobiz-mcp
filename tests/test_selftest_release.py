@@ -86,6 +86,7 @@ class FakeService:
             "content_hash_media_deduplication",
             "brief_to_copy_evidence_traceability",
             "grounded_evidence_mapping",
+            "section_aware_evidence_mapping",
             "evidence_aware_recipe_verdict",
             "cross_section_copy_deduplication",
             "balanced_native_card_copy_gate",

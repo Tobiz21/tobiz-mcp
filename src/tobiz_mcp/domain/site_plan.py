@@ -36,6 +36,27 @@ TRUST_ARCHITECTURE = {
     "ecommerce": (("delivery", "proof", "contact"), 2),
 }
 
+EVIDENCE_SECTION_ROLES = {
+    "lead_generation": {
+        "offer": {"hero", "offer", "catalog"},
+        "region": {"hero", "contact"},
+        "process": {"process", "offer"},
+        "expertise": {"hero", "expert", "proof", "benefits"},
+    },
+    "education": {
+        "program": {"hero", "programs", "offer"},
+        "format": {"hero", "programs", "offer"},
+        "expert": {"hero", "expert", "proof"},
+        "result": {"hero", "benefits", "programs", "proof"},
+    },
+    "ecommerce": {
+        "catalog": {"hero", "catalog"},
+        "delivery": {"delivery", "contact", "benefits"},
+        "payment": {"offer", "delivery", "catalog"},
+        "proof": {"proof", "expert"},
+    },
+}
+
 
 def safe_system_title(value: str, fallback: str = "Новая страница") -> str:
     """Return a TOBIZ panel-safe title without changing visible or SEO copy."""
@@ -621,6 +642,11 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
     for code in required:
         values = [brief.get(alias, facts.get(alias)) for alias in aliases_by_code.get(code, ())]
         evidence_tokens[code] = tokens(values)
+    roles_by_block = {
+        int(section["position"]): str(section.get("role") or "content")
+        for section in plan.get("sections") or []
+        if isinstance(section, dict) and isinstance(section.get("position"), int)
+    }
 
     def grounded(code: str, value: str) -> bool:
         expected = evidence_tokens.get(code, set())
@@ -657,13 +683,27 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
             value = str(slot.get("value") or "").strip()
             if value and grounded(normalized, value):
                 mapped[normalized].append({
-                    "block_index": slot.get("block_index"), "path": slot.get("path")})
+                    "block_index": slot.get("block_index"), "path": slot.get("path"),
+                    **({"section_role": roles_by_block[slot.get("block_index")]}
+                       if slot.get("block_index") in roles_by_block else {}),
+                })
             elif value and normalized != "contact":
                 weak.append({
                     "block_index": slot.get("block_index"), "path": slot.get("path"),
                     "evidence_code": normalized,
                 })
     missing = [code for code in required if not mapped[code]]
+    misplaced = []
+    placement_rules = EVIDENCE_SECTION_ROLES.get(goal, {})
+    for code, uses in mapped.items():
+        allowed_roles = placement_rules.get(code)
+        placed_roles = {str(item.get("section_role")) for item in uses
+                        if item.get("section_role")}
+        if allowed_roles and placed_roles and not placed_roles & allowed_roles:
+            misplaced.append({
+                "evidence_code": code, "used_in": sorted(placed_roles),
+                "allowed_roles": sorted(allowed_roles), "mappings": uses,
+            })
     issues = []
     if missing:
         issues.append({
@@ -683,6 +723,12 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
             "items": weak,
             "action": "Добавить в текст конкретный подтвержденный факт или убрать неверную связь.",
         })
+    if misplaced:
+        issues.append({
+            "priority": "must_fix", "code": "evidence_mapped_to_wrong_section",
+            "items": misplaced,
+            "action": "Перенести подтвержденный факт в смыслово подходящую штатную секцию.",
+        })
     return {
         "ready": not issues,
         "required": required,
@@ -690,6 +736,7 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
         "missing": missing,
         "mappings": mapped,
         "ungrounded_mappings": weak,
+        "misplaced_mappings": misplaced,
         "issues": issues,
     }
 

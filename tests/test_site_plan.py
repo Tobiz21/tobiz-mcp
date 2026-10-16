@@ -442,6 +442,24 @@ def test_evidence_coverage_rejects_label_without_fact_in_copy():
     assert result['issues'][-1]['code'] == 'evidence_mapping_not_grounded'
 
 
+def test_evidence_coverage_rejects_fact_in_wrong_section_role():
+    result = site_plan.validate_evidence_coverage({
+        'goal': 'education',
+        'brief': {'teacher': 'Ирина Мезенцева'},
+        'brief_readiness': {'goal': 'education', 'confirmed_fields': ['expert']},
+        'sections': [{'position': 4, 'role': 'contact'}],
+    }, {'slots': [{
+        'block_index': 4, 'path': '/text', 'value': 'Преподаватель Ирина Мезенцева',
+        'evidence_codes': ['expert'],
+    }]})
+    assert result['ready'] is False
+    assert result['covered'] == ['expert']
+    issue = next(item for item in result['issues']
+                 if item['code'] == 'evidence_mapped_to_wrong_section')
+    assert issue['items'][0]['used_in'] == ['contact']
+    assert 'expert' in issue['items'][0]['allowed_roles']
+
+
 def test_recipe_preflight_includes_evidence_coverage_in_build_verdict():
     source = draft()
     brief = complete_education_brief()
