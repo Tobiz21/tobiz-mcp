@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tobiz_mcp.configure import env_text, project_ids, write_config
+from tobiz_mcp.configure import env_text, project_ids, update_allowlist_text, write_config
 
 
 def test_project_ids_normalizes_and_deduplicates() -> None:
@@ -45,3 +45,33 @@ def test_write_config_backs_up_existing_file(tmp_path) -> None:
     assert backup is not None
     assert backup.read_text(encoding="utf-8") == "OLD=1\n"
     assert target.read_text(encoding="utf-8") == "NEW=1\n"
+
+
+def test_update_allowlist_preserves_secrets_and_custom_settings() -> None:
+    source = (
+        "# local secrets\n"
+        "TOBIZ_EMAIL=owner@example.test\n"
+        "TOBIZ_PASSWORD=secret\n"
+        "TOBIZ_ALLOWED_PROJECT_IDS=1\n"
+        "TOBIZ_REQUIRE_PROJECT_ALLOWLIST=false\n"
+        "CUSTOM_SETTING=keep-me\n"
+    )
+
+    updated = update_allowlist_text(source, ["123", "456"])
+
+    assert "TOBIZ_ALLOWED_PROJECT_IDS=123,456" in updated
+    assert "TOBIZ_REQUIRE_PROJECT_ALLOWLIST=true" in updated
+    assert "TOBIZ_PASSWORD=secret" in updated
+    assert "CUSTOM_SETTING=keep-me" in updated
+
+
+def test_update_allowlist_adds_missing_isolation_settings_once() -> None:
+    updated = update_allowlist_text(
+        "TOBIZ_EMAIL=owner@example.test\nTOBIZ_ALLOWED_PROJECT_IDS=old\n"
+        "TOBIZ_ALLOWED_PROJECT_IDS=duplicate\n",
+        ["777"],
+    )
+
+    assert updated.count("TOBIZ_ALLOWED_PROJECT_IDS=") == 1
+    assert "TOBIZ_ALLOWED_PROJECT_IDS=777" in updated
+    assert updated.count("TOBIZ_REQUIRE_PROJECT_ALLOWLIST=true") == 1

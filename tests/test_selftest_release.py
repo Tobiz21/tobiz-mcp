@@ -117,6 +117,7 @@ class FakeService:
             "transactional_multipage_site_build",
             "one_call_site_workflow_start",
             "slug_accurate_public_page_verification",
+            "auto_allow_mcp_created_projects",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

@@ -23,6 +23,7 @@ def make_service(*, allowed: frozenset[str], strict: bool) -> Service:
         allowed_project_ids=allowed,
         require_project_allowlist=strict,
     )
+    service._managed_project_ids = set()
     return service
 
 
@@ -70,6 +71,7 @@ def test_health_reports_project_access_mode() -> None:
         "strict": True,
         "allowlist_configured": True,
         "allowed_project_count": 2,
+        "managed_created_project_count": 0,
     }
 
 
@@ -123,3 +125,39 @@ def test_onboarding_warns_for_personal_unrestricted_install() -> None:
     assert result["ready"] is True
     assert result["distribution_ready"] is False
     assert result["next_action"] == "Включите строгую изоляцию для распространения"
+
+
+def test_created_project_is_persisted_and_allowed_in_strict_mode(tmp_path) -> None:
+    service = make_service(allowed=frozenset({"123"}), strict=True)
+    service.config = Config(
+        email=None,
+        password=None,
+        allowed_project_ids=frozenset({"123"}),
+        require_project_allowlist=True,
+        session_dir=tmp_path,
+    )
+
+    service._remember_managed_project("456")
+
+    service.check_allowed("456")
+    assert service._load_managed_project_ids() == {"456"}
+    assert (tmp_path / "mcp-created-projects.json").read_text(encoding="utf-8") == (
+        '{"project_ids": ["456"]}'
+    )
+
+
+def test_untrusted_project_remains_blocked_with_managed_projects(tmp_path) -> None:
+    service = make_service(allowed=frozenset({"123"}), strict=True)
+    service.config = Config(
+        email=None,
+        password=None,
+        allowed_project_ids=frozenset({"123"}),
+        require_project_allowlist=True,
+        session_dir=tmp_path,
+    )
+    service._remember_managed_project("456")
+
+    with pytest.raises(errors.TobizError) as caught:
+        service.check_allowed("789")
+
+    assert caught.value.code == errors.PROJECT_NOT_ALLOWED

@@ -44,6 +44,7 @@ class Service:
         self.catalog = Catalog(config, self.client, self.bridge)
         self.drafts = DraftStore()
         self._projects: list[Project] | None = None
+        self._managed_project_ids = self._load_managed_project_ids()
         self._counters = {"auth_relogin": 0, "upstream_error": 0, "render_failed": 0}
         self._tool_metrics: dict[str, dict[str, Any]] = {}
 
@@ -60,8 +61,42 @@ class Service:
 
     # --- проекты и страницы ---
 
+    @property
+    def allowed_project_ids(self) -> set[str]:
+        return set(self.config.allowed_project_ids) | set(
+            getattr(self, "_managed_project_ids", set())
+        )
+
+    def _managed_projects_path(self) -> Path:
+        return Path(self.config.session_dir) / "mcp-created-projects.json"
+
+    def _load_managed_project_ids(self) -> set[str]:
+        path = self._managed_projects_path()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return set()
+        values = payload.get("project_ids", []) if isinstance(payload, dict) else []
+        return {str(value) for value in values if str(value).isdigit()}
+
+    def _remember_managed_project(self, project_id: str) -> None:
+        project_id = str(project_id)
+        if not project_id.isdigit():
+            raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ вернул некорректный project_id")
+        self._managed_project_ids = set(getattr(self, "_managed_project_ids", set()))
+        self._managed_project_ids.add(project_id)
+        path = self._managed_projects_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps({"project_ids": sorted(self._managed_project_ids)}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+
     async def projects(self, refresh: bool = False) -> list[Project]:
-        if self.config.require_project_allowlist and not self.config.allowed_project_ids:
+        allowed = self.allowed_project_ids
+        if self.config.require_project_allowlist and not allowed:
             self.check_allowed("")
         await self.client.ensure_session()
         if self._projects is not None and not refresh:
@@ -72,10 +107,10 @@ class Service:
                                     "Проверьте сессию: tobiz_login")
         html = envelope.payload.get("html") or ""
         projects = parse_projects(str(html), self.config.lp_template)
-        if self.config.allowed_project_ids:
+        if allowed:
             projects = [
                 project for project in projects
-                if project.project_id in self.config.allowed_project_ids
+                if project.project_id in allowed
             ]
         self._projects = projects
         return projects
@@ -96,7 +131,7 @@ class Service:
             "Штатный рендерер недоступен")
 
         strict = self.config.require_project_allowlist
-        allowed = self.config.allowed_project_ids
+        allowed = self.allowed_project_ids
         if strict and allowed:
             add("project_isolation", "pass",
                 f"Строгий режим включен, разрешено проектов: {len(allowed)}")
@@ -177,7 +212,7 @@ class Service:
         )
 
     def check_allowed(self, project_id: str) -> None:
-        allowed = self.config.allowed_project_ids
+        allowed = self.allowed_project_ids
         if self.config.require_project_allowlist and not allowed:
             raise errors.TobizError(
                 errors.PROJECT_NOT_ALLOWED,
@@ -1137,6 +1172,7 @@ class Service:
         if not project_id:
             raise errors.TobizError(errors.SAVE_FAILED, "TOBIZ не вернул project_id",
                                     raw=result.payload)
+        self._remember_managed_project(project_id)
         self._projects = None
         projects = await self.projects(refresh=True)
         created = [project.to_dict(self.config.lp_template, include_pages=True)
@@ -1548,7 +1584,7 @@ class Service:
                 "read_only": self.config.read_only,
                 "dry_run": self.config.dry_run,
                 "strict_project_isolation": self.config.require_project_allowlist,
-                "allowed_project_count": len(self.config.allowed_project_ids),
+                "allowed_project_count": len(self.allowed_project_ids),
                 "renderer_available": self.bridge.available,
                 "session_present": bool(self.client.describe_session().get("present")),
             },
@@ -1771,14 +1807,18 @@ class Service:
                 "transactional_multipage_site_build",
                 "one_call_site_workflow_start",
                 "slug_accurate_public_page_verification",
+                "auto_allow_mcp_created_projects",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,
             "dry_run": self.config.dry_run,
             "project_access": {
                 "strict": self.config.require_project_allowlist,
-                "allowlist_configured": bool(self.config.allowed_project_ids),
-                "allowed_project_count": len(self.config.allowed_project_ids),
+                "allowlist_configured": bool(self.allowed_project_ids),
+                "allowed_project_count": len(self.allowed_project_ids),
+                "managed_created_project_count": len(
+                    getattr(self, "_managed_project_ids", set())
+                ),
             },
             "session": self.client.describe_session(),
             "assets_dir": str(self.config.assets_dir),

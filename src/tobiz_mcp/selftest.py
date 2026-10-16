@@ -197,6 +197,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "transactional_multipage_site_build",
         "one_call_site_workflow_start",
         "slug_accurate_public_page_verification",
+        "auto_allow_mcp_created_projects",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {

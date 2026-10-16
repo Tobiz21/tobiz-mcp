@@ -49,6 +49,29 @@ def env_text(*, projects: list[str], email: str = "", password: str = "",
     return "\n".join(lines) + "\n"
 
 
+def update_allowlist_text(content: str, projects: list[str]) -> str:
+    """Update only project isolation settings in an existing env file."""
+    replacements = {
+        "TOBIZ_ALLOWED_PROJECT_IDS": ",".join(projects),
+        "TOBIZ_REQUIRE_PROJECT_ALLOWLIST": "true",
+    }
+    seen: set[str] = set()
+    result: list[str] = []
+    for line in content.splitlines():
+        key = line.split("=", 1)[0].strip() if "=" in line else ""
+        if key not in replacements:
+            result.append(line)
+            continue
+        if key in seen:
+            continue
+        result.append(f"{key}={replacements[key]}")
+        seen.add(key)
+    for key, value in replacements.items():
+        if key not in seen:
+            result.append(f"{key}={value}")
+    return "\n".join(result) + "\n"
+
+
 def write_config(path: Path, content: str) -> Path | None:
     path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +104,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--transport", choices=("stdio", "http"), default="stdio")
     result.add_argument("--non-interactive", action="store_true",
                         help="Брать логин и пароль из TOBIZ_EMAIL/TOBIZ_PASSWORD")
+    result.add_argument(
+        "--update-allowlist-only", action="store_true",
+        help="Изменить только список проектов и строгий режим в существующем .env",
+    )
     return result
 
 
@@ -91,6 +118,20 @@ def main() -> None:
         if args.non_interactive:
             raise SystemExit("--projects обязателен в неинтерактивном режиме")
         projects = project_ids(input("Разрешенные project_id через запятую: "))
+
+    if args.update_allowlist_only:
+        target = args.output.expanduser().resolve()
+        if not target.is_file():
+            raise SystemExit(f"Для --update-allowlist-only нужен существующий файл: {target}")
+        content = update_allowlist_text(target.read_text(encoding="utf-8"), projects)
+        backup = write_config(target, content)
+        print(f"Конфигурация обновлена: {target}")
+        print(f"Разрешенные проекты: {', '.join(projects)}")
+        print("Строгая изоляция: включена; остальные настройки сохранены")
+        if backup:
+            print(f"Предыдущая конфигурация сохранена: {backup}")
+        print("Переподключите MCP и запустите tobiz_onboarding_check.")
+        return
 
     if args.non_interactive:
         email = os.environ.get("TOBIZ_EMAIL", "")
