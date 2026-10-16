@@ -114,6 +114,25 @@ def _error(exc: Exception, started: float) -> dict[str, Any]:
                      "duration_ms": int((time.time() - started) * 1000)}}
 
 
+def _package_images(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Validate upload inputs before a package is reported ready."""
+    result = []
+    for index, image in enumerate(images or []):
+        if not isinstance(image, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    f"images[{index}] должен быть объектом")
+        source_count = sum(bool(image.get(key)) for key in ("path", "content_base64"))
+        if source_count != 1:
+            raise errors.TobizError(
+                errors.BAD_ARGUMENT,
+                f"images[{index}] должен содержать ровно один источник: path или content_base64")
+        if image.get("content_base64") and not str(image.get("file_name") or "").strip():
+            raise errors.TobizError(errors.BAD_ARGUMENT,
+                                    f"images[{index}].file_name обязателен для content_base64")
+        result.append(dict(image))
+    return result
+
+
 def wrap(func: Callable[..., Any], *, tool_name: str = "",
          metric_recorder: Callable[[str, bool, int, str | None], None] | None = None
          ) -> Callable[..., Any]:
@@ -828,7 +847,7 @@ def register(mcp: Any, service: Service) -> list[str]:
             apply: bool = False) -> dict[str, Any]:
         final_fields = dict(fields or {})
         final_categories = list(category_ids or [])
-        final_images = list(images or [])
+        final_images = _package_images(images)
         preflight = module_quality_domain.preflight_article(
             final_fields, final_categories, len(final_images))
         plan = {"kind": "article", "fields": final_fields,
@@ -969,7 +988,8 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     @tool("tobiz_publish_product_package",
           "Preview or atomically publish a complete native TOBIZ product with categories, images "
-          "and offers. apply=false validates only. apply=true creates the full product, re-reads it "
+          "and offers. An offer may use image_index to select a newly uploaded image. "
+          "apply=false validates only. apply=true creates the full product, re-reads it "
           "and runs the publication audit; any failure deletes the incomplete product.")
     async def tobiz_publish_product_package(
             project_id: Id | None = None, fields: dict[str, Any] | None = None,
@@ -979,8 +999,25 @@ def register(mcp: Any, service: Service) -> list[str]:
             allow_price_on_request: bool = False, apply: bool = False) -> dict[str, Any]:
         final_fields = dict(fields or {})
         final_categories = list(category_ids or [])
-        final_images = list(images or [])
+        final_images = _package_images(images)
         final_offers = [dict(offer) for offer in (offers or [])]
+        for index, offer in enumerate(final_offers):
+            if "image_index" not in offer:
+                continue
+            if "image_id" in offer:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT,
+                    f"offers[{index}] не может одновременно содержать image_index и image_id")
+            try:
+                image_index = int(offer["image_index"])
+            except (TypeError, ValueError) as exc:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT, f"offers[{index}].image_index должен быть целым") from exc
+            if image_index < 0 or image_index >= len(final_images):
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT,
+                    f"offers[{index}].image_index выходит за пределы images")
+            offer["image_index"] = image_index
         preflight = module_quality_domain.preflight_product(
             final_fields, final_categories, final_offers, len(final_images),
             allow_price_on_request=allow_price_on_request)
@@ -1005,8 +1042,19 @@ def register(mcp: Any, service: Service) -> list[str]:
                 await service.module_upload_image(
                     project.project_id, "item", entity_id, image.get("path"),
                     image.get("content_base64"), image.get("file_name"))
+            product = await service.module_get(project.project_id, "item", entity_id)
+            native_images = list(product.get("images") or [])
             for offer in final_offers:
-                await service.product_offer_create(project.project_id, entity_id, offer)
+                saved_offer = dict(offer)
+                image_index = saved_offer.pop("image_index", None)
+                if image_index is not None:
+                    image_id = native_images[image_index].get("id")
+                    if not image_id:
+                        raise errors.TobizError(
+                            errors.SAVE_FAILED,
+                            f"TOBIZ не вернул id изображения с индексом {image_index}")
+                    saved_offer["image_id"] = str(image_id)
+                await service.product_offer_create(project.project_id, entity_id, saved_offer)
             product = await service.module_get(project.project_id, "item", entity_id)
             saved_offers = await service.product_offers(project.project_id, entity_id)
             audit = module_quality_domain.audit_product(
