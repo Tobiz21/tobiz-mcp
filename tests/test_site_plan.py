@@ -73,6 +73,35 @@ def test_brief_readiness_accepts_complete_nested_facts():
     assert result['optional_questions'] == []
 
 
+def test_brief_readiness_rejects_placeholder_and_demo_values():
+    result = site_plan.brief_readiness({
+        'industry': 'Услуги бурения скважин',
+        'facts': {
+            'offer': 'Бурение под ключ',
+            'region': 'Чувашия',
+            'steps': ['Выезд', 'Бурение'],
+            'experience': 'клиент исправит позже',
+            'contacts': {'phone': '+7 800 333 22 33', 'email': ''},
+        },
+    })
+    missing = {item['code']: item for item in result['missing_required']}
+    assert set(missing) == {'expertise', 'contact'}
+    assert missing['expertise']['unresolved_fields'] == ['experience']
+    assert missing['contact']['unresolved_fields'] == ['contacts']
+
+
+def test_brief_readiness_accepts_one_real_value_in_nested_contact():
+    result = site_plan.brief_readiness({
+        'industry': 'Услуги бурения скважин',
+        'facts': {
+            'offer': 'Бурение под ключ', 'region': 'Чувашия',
+            'steps': ['Выезд', 'Бурение'], 'experience': 'Работаем с 2018 года',
+            'contacts': {'phone': 'уточнить', 'email': 'hello@company.ru'},
+        },
+    })
+    assert result['ready_for_quality_build'] is True
+
+
 def test_plan_comparison_detects_structure_and_role_drift():
     source = draft()
     plan = {'plan_id': 'x', 'sections': [

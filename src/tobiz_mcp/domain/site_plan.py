@@ -81,6 +81,12 @@ EVIDENCE_QUESTIONS = {
     "payment": "Какие способы и условия оплаты доступны покупателю?",
 }
 
+PLACEHOLDER_FACT_TERMS = (
+    "уточнить", "неизвестно", "нет данных", "пока нет", "придумай", "примерно",
+    "клиент исправит", "клиент заменит", "заполнить позже", "будет позже", "tbd",
+    "todo", "placeholder", "lorem ipsum", "example.com", "+7 800 333 22 33",
+)
+
 SLOT_INSTRUCTIONS = {
     "section_title": "Коротко назвать смысл секции, без рекламной абстракции.",
     "card_title": "Одна конкретная мысль; соседние карточки должны иметь сопоставимую длину.",
@@ -92,15 +98,41 @@ SLOT_INSTRUCTIONS = {
 }
 
 
-def _has_fact(brief: dict[str, Any], aliases: tuple[str, ...]) -> bool:
-    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
-    for key in aliases:
-        value = brief.get(key, facts.get(key))
-        if isinstance(value, (list, tuple, set, dict)) and value:
-            return True
-        if value is not None and str(value).strip():
+def _fact_leaves(value: Any):
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from _fact_leaves(child)
+    elif isinstance(value, (list, tuple, set)):
+        for child in value:
+            yield from _fact_leaves(child)
+    elif value is not None:
+        text = str(value).strip()
+        if text:
+            yield text
+
+
+def _usable_fact(value: Any) -> bool:
+    for text in _fact_leaves(value):
+        normalized = re.sub(r"\s+", " ", text.lower().replace("ё", "е"))
+        if not any(term in normalized for term in PLACEHOLDER_FACT_TERMS):
             return True
     return False
+
+
+def _fact_status(brief: dict[str, Any], aliases: tuple[str, ...]) -> tuple[bool, list[str]]:
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+    unresolved = []
+    for key in aliases:
+        value = brief.get(key, facts.get(key))
+        if _usable_fact(value):
+            return True, unresolved
+        if list(_fact_leaves(value)):
+            unresolved.append(key)
+    return False, unresolved
+
+
+def _has_fact(brief: dict[str, Any], aliases: tuple[str, ...]) -> bool:
+    return _fact_status(brief, aliases)[0]
 
 
 def brief_readiness(brief: dict[str, Any], goal: str | None = None) -> dict[str, Any]:
@@ -113,7 +145,8 @@ def brief_readiness(brief: dict[str, Any], goal: str | None = None) -> dict[str,
     missing = []
     confirmed = []
     for code, aliases, label in EVIDENCE_REQUIREMENTS[resolved_goal]:
-        if _has_fact(brief, aliases):
+        available, unresolved = _fact_status(brief, aliases)
+        if available:
             confirmed.append(code)
             continue
         missing.append({
@@ -121,6 +154,7 @@ def brief_readiness(brief: dict[str, Any], goal: str | None = None) -> dict[str,
             "label": label,
             "accepted_fields": list(aliases),
             "question": EVIDENCE_QUESTIONS[code],
+            **({"unresolved_fields": unresolved} if unresolved else {}),
         })
     prototype = brief.get("allow_placeholders") is True
     optional = []
