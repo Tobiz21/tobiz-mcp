@@ -65,6 +65,22 @@ EVIDENCE_REQUIREMENTS = {
     ),
 }
 
+EVIDENCE_QUESTIONS = {
+    "offer": "Что именно получает клиент: услуга, состав результата и ключевые ограничения?",
+    "geography": "В каком городе или регионе оказывается услуга?",
+    "process": "Как проходит работа по шагам от заявки до результата?",
+    "expertise": "Кто выполняет работу и какими подтвержденными фактами доказана компетенция?",
+    "contact": "Какие телефон, email или другой способ связи можно публиковать?",
+    "program": "Что конкретно входит в программу обучения?",
+    "format": "В каком формате проходят занятия, по какому графику и для кого?",
+    "expert": "Кто преподает и какой подтвержденный опыт можно указать?",
+    "result": "Какой конкретный и проверяемый результат получает ученик?",
+    "catalog": "Какие категории и товары должны быть представлены в каталоге?",
+    "price": "Какие реальные цены или правила расчета стоимости можно указать?",
+    "delivery": "Каковы условия доставки, самовывоза и сроки получения?",
+    "payment": "Какие способы и условия оплаты доступны покупателю?",
+}
+
 SLOT_INSTRUCTIONS = {
     "section_title": "Коротко назвать смысл секции, без рекламной абстракции.",
     "card_title": "Одна конкретная мысль; соседние карточки должны иметь сопоставимую длину.",
@@ -87,14 +103,56 @@ def _has_fact(brief: dict[str, Any], aliases: tuple[str, ...]) -> bool:
     return False
 
 
+def brief_readiness(brief: dict[str, Any], goal: str | None = None) -> dict[str, Any]:
+    """Return the smallest factual question set required for a trustworthy quality build."""
+    if not isinstance(brief, dict):
+        raise ValueError("brief must be an object")
+    resolved_goal = goal or infer_goal(brief)
+    if resolved_goal not in EVIDENCE_REQUIREMENTS:
+        raise ValueError(f"Unknown site goal: {resolved_goal}")
+    missing = []
+    confirmed = []
+    for code, aliases, label in EVIDENCE_REQUIREMENTS[resolved_goal]:
+        if _has_fact(brief, aliases):
+            confirmed.append(code)
+            continue
+        missing.append({
+            "code": code,
+            "label": label,
+            "accepted_fields": list(aliases),
+            "question": EVIDENCE_QUESTIONS[code],
+        })
+    prototype = brief.get("allow_placeholders") is True
+    optional = []
+    if not _has_fact(brief, ("audience", "target_audience", "clients")):
+        optional.append({
+            "code": "audience",
+            "question": "Кто основной клиент и в какой ситуации он ищет это предложение?",
+        })
+    if not _has_fact(brief, ("primary_cta", "cta", "action")):
+        optional.append({
+            "code": "primary_cta",
+            "question": "Какое одно основное действие должен совершить посетитель сайта?",
+        })
+    return {
+        "goal": resolved_goal,
+        "mode": "prototype" if prototype else "quality",
+        "ready_for_quality_build": not missing,
+        "confirmed_fields": confirmed,
+        "missing_required": missing,
+        "questions": [item["question"] for item in missing],
+        "optional_questions": optional,
+        "can_continue_with_placeholders": prototype,
+        "rule": ("Не придумывать отсутствующие факты. Для чернового прототипа явно передать "
+                 "allow_placeholders=true; такой прототип не готов к публикации."),
+    }
+
+
 def compile_content_brief(brief: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     """Turn a site plan into evidence-bound instructions for every native text slot."""
     goal = str(plan.get("goal") or infer_goal(brief))
-    missing = [
-        {"code": code, "label": label, "accepted_fields": list(aliases)}
-        for code, aliases, label in EVIDENCE_REQUIREMENTS[goal]
-        if not _has_fact(brief, aliases)
-    ]
+    readiness = brief_readiness(brief, goal)
+    missing = readiness["missing_required"]
     slots = []
     for section in plan.get("sections") or []:
         for slot in section.get("text_slots") or []:
@@ -111,6 +169,7 @@ def compile_content_brief(brief: dict[str, Any], plan: dict[str, Any]) -> dict[s
     return {
         "plan_id": plan.get("plan_id"), "goal": goal,
         "ready_for_copywriting": not missing, "missing_evidence": missing, "slots": slots,
+        "questions": readiness["questions"],
         "prohibited_inventions": [
             "prices and discounts", "statistics and quantities", "experience and credentials",
             "customer names and testimonials", "guarantees and deadlines", "addresses and contacts",
@@ -196,6 +255,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
         "rule": "Copy the installed native structure; replace content and media; add no custom code.",
     }
     plan["content_brief"] = compile_content_brief(brief, plan)
+    plan["brief_readiness"] = brief_readiness(brief, goal)
     return plan
 
 
@@ -399,6 +459,15 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
     media_result = (validate_media_recipe(plan, blueprint, media_recipe)
                     if media_recipe else None)
     issues = list(content_result.get("issues") or [])
+    readiness = brief_readiness(brief, str(plan.get("goal") or "") or None)
+    for item in readiness["missing_required"]:
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix",
+            "code": "brief_evidence_missing",
+            "evidence_code": item["code"],
+            "question": item["question"],
+            "action": "Получить подтвержденный факт от клиента или включить режим прототипа.",
+        })
     if blueprint.get("photo_slots") and media_result is None:
         issues.append({
             "priority": "improve" if draft_mode else "must_fix",
@@ -455,7 +524,8 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
     return {
         "plan_id": plan.get("plan_id"), "mode": "prototype" if draft_mode else "quality",
         "ready_for_build": not blockers, "content": content_result, "media": media_result,
-        "seo": {"provided": bool(seo_values)}, "issues": issues, "blockers": blockers,
+        "brief_readiness": readiness, "seo": {"provided": bool(seo_values)},
+        "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
     }
 

@@ -1699,6 +1699,7 @@ class Service:
                 "available_template_fallback_selection",
                 "bounded_parallel_template_preflight",
                 "design_template_candidate_discovery",
+                "evidence_first_brief_gate",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

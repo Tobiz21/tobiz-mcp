@@ -70,7 +70,7 @@ READ_TOOLS = {
     "tobiz_refine_design",
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
-    "tobiz_plan_site", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
+    "tobiz_plan_site", "tobiz_validate_brief", "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
     "tobiz_site_package_status",
@@ -1368,6 +1368,20 @@ def register(mcp: Any, service: Service) -> list[str]:
             brief, selection, selected, blueprint, source_draft, goal or None)
         plan["template_passport"] = template_passport
         return plan
+
+    @tool("tobiz_validate_brief", "Check whether a client brief contains the minimum verified facts "
+          "needed for a trustworthy TOBIZ site. Returns only the missing required questions, optional "
+          "clarifications and whether quality build may start. Use allow_placeholders=true only for an "
+          "explicit unpublished prototype. Read-only; does not select a template or access TOBIZ.")
+    async def tobiz_validate_brief(brief: dict[str, Any], goal: str = "") -> dict[str, Any]:
+        if not isinstance(brief, dict):
+            raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
+        if goal and goal not in composition_domain.GOALS:
+            raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
+        try:
+            return site_plan_domain.brief_readiness(brief, goal or None)
+        except ValueError as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
 
     @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "
           "TOBIZ site before writing text. Selects and locks the same installed template as tobiz_plan_site, "

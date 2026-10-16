@@ -43,6 +43,36 @@ def test_content_compiler_requires_evidence_and_accepts_nested_facts():
     assert 'prices and discounts' in manifest['prohibited_inventions']
 
 
+def test_brief_readiness_returns_only_missing_required_questions():
+    result = site_plan.brief_readiness({
+        'industry': 'Онлайн-школа математики',
+        'facts': {'program': 'Арифметика', 'format': 'Онлайн'},
+    })
+    assert result['goal'] == 'education'
+    assert result['ready_for_quality_build'] is False
+    assert [item['code'] for item in result['missing_required']] == [
+        'expert', 'result', 'contact']
+    assert len(result['questions']) == 3
+    assert {item['code'] for item in result['optional_questions']} == {
+        'audience', 'primary_cta'}
+
+
+def test_brief_readiness_accepts_complete_nested_facts():
+    result = site_plan.brief_readiness({
+        'industry': 'Онлайн-школа математики',
+        'audience': 'Родители учеников 2-4 классов',
+        'primary_cta': 'Записаться на консультацию',
+        'facts': {
+            'program': 'Арифметика', 'format': 'Онлайн в группе',
+            'teacher': 'Ирина, преподаватель', 'result': 'Решает задачи самостоятельно',
+            'phone': '+7 900 000-00-00',
+        },
+    })
+    assert result['ready_for_quality_build'] is True
+    assert result['questions'] == []
+    assert result['optional_questions'] == []
+
+
 def test_plan_comparison_detects_structure_and_role_drift():
     source = draft()
     plan = {'plan_id': 'x', 'sections': [
@@ -134,7 +164,9 @@ def test_media_preflight_blocks_placeholders_bad_ratio_and_missing_safe_area():
 
 def test_unified_preflight_accepts_complete_quality_package():
     source = draft()
-    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.'}
+    brief = {'industry': 'Онлайн-школа математики', 'price': '6 400 руб.', 'facts': {
+        'program': 'Арифметика', 'format': 'Онлайн', 'teacher': 'Ирина, преподаватель',
+        'result': 'Самостоятельно решает задачи', 'phone': '+7 900 000-00-00'}}
     selection, selected = design.select_native(brief)
     blueprint = compact_blueprint(passport(source), content_map(source))
     plan = site_plan.build(brief, selection, selected, blueprint, source)
@@ -159,6 +191,30 @@ def test_unified_preflight_accepts_complete_quality_package():
     assert result['ready_for_build'] is True
     assert result['mode'] == 'quality'
     assert result['next_action'] == 'build'
+
+
+def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
+    source = draft()
+    brief = {'industry': 'Онлайн-школа математики'}
+    selection, selected = design.select_native(brief)
+    blueprint = compact_blueprint(passport(source), content_map(source))
+    plan = site_plan.build(brief, selection, selected, blueprint, source)
+    recipe = {'types': ['1154', '306'], 'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс математики'},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+    ]}
+    result = site_plan.validate_build_package(brief, plan, blueprint, recipe, None, None)
+    assert 'brief_evidence_missing' in {item['code'] for item in result['blockers']}
+    assert result['brief_readiness']['ready_for_quality_build'] is False
+
+    prototype_brief = {**brief, 'allow_placeholders': True}
+    prototype_plan = site_plan.build(
+        prototype_brief, selection, selected, blueprint, source)
+    prototype = site_plan.validate_build_package(
+        prototype_brief, prototype_plan, blueprint, recipe, None, None)
+    assert 'brief_evidence_missing' not in {item['code'] for item in prototype['blockers']}
+    assert any(item['code'] == 'brief_evidence_missing' for item in prototype['issues'])
+    assert prototype['mode'] == 'prototype'
 
 
 def test_unified_preflight_blocks_missing_seo_and_unsafe_link():

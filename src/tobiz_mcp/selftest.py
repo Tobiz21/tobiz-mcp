@@ -150,6 +150,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "available_template_fallback_selection",
         "bounded_parallel_template_preflight",
         "design_template_candidate_discovery",
+        "evidence_first_brief_gate",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {
