@@ -52,7 +52,19 @@ def _plain(value):
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", value))).strip()
 
 
-def _field_profile(path, kind, block_type):
+def _parent_context(value, path):
+    parts = [part.replace("~1", "/").replace("~0", "~")
+             for part in path.lstrip("/").split("/")]
+    node = value
+    try:
+        for part in parts[:-1]:
+            node = node[int(part)] if isinstance(node, list) else node[part]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return {}
+    return node if isinstance(node, dict) else {}
+
+
+def _field_profile(path, kind, block_type, context=None):
     key = path.rsplit("/", 1)[-1]
     if kind == "image":
         if key == "logo_img":
@@ -66,6 +78,11 @@ def _field_profile(path, kind, block_type):
         return {"role": "content_image", "image_hint": "match the native slot ratio and subject"}
     if kind == "link":
         return {"role": "link"}
+    control_type = str((context or {}).get("type") or "").lower()
+    if re.search(r"/form\d+/\d+/", path) and key in {"title", "placeholder"}:
+        if control_type in {"btn", "button", "submit"}:
+            return {"role": "button", "recommended_max_chars": 28, "mobile_lines": "1-2"}
+        return {"role": "form_label", "recommended_max_chars": 70, "mobile_lines": "1-3"}
     if "/btn" in path and key == "title":
         return {"role": "button", "recommended_max_chars": 28, "mobile_lines": "1-2"}
     if re.fullmatch(r"title", key):
@@ -87,7 +104,8 @@ def passport(draft):
             continue
         profiled = []
         for path, kind, value in fields(block.values):
-            profile = _field_profile(path, kind, block.type_id)
+            profile = _field_profile(
+                path, kind, block.type_id, _parent_context(block.values, path))
             plain = _plain(value) if kind == "text" else value
             item = {"path": path, "kind": kind, **profile}
             if kind == "text":

@@ -182,6 +182,28 @@ def test_passport_classifies_images_and_long_text():
     assert image['role'] == 'catalog_image'
 
 
+def test_passport_profiles_native_form_controls_by_sibling_type():
+    draft = Draft('1', '2', blocks={'7': DraftBlock('7', '306', {
+        'form1': [
+            {'type': 'text', 'title': 'Ваше имя', 'placeholder': 'Как к вам обращаться'},
+            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'btn', 'title': 'Узнать свободное время'},
+        ],
+    })}, order=['7'])
+    result = passport(draft)
+    profiled = {field['path']: field for field in result['blocks'][0]['fields']}
+    assert profiled['/form1/0/title']['role'] == 'form_label'
+    assert profiled['/form1/0/placeholder']['role'] == 'form_label'
+    assert profiled['/form1/1/title']['role'] == 'form_label'
+    assert profiled['/form1/2/title']['role'] == 'button'
+    assert profiled['/form1/2/title']['recommended_max_chars'] == 28
+
+    blueprint = compact_blueprint(result, content_map(draft))
+    roles = {slot['path']: slot['role'] for slot in blueprint['recipe']['slots']}
+    assert roles['/form1/0/title'] == 'form_label'
+    assert roles['/form1/2/title'] == 'button'
+
+
 def test_compact_audit_filters_map_canvas_and_surfaces_real_errors():
     report = {'url': 'https://example.test', 'viewports': {'mobile': {
         'document': {'overflowX': False},
