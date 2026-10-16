@@ -71,6 +71,7 @@ READ_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
+    "tobiz_validate_conversion_path",
     "tobiz_compile_site_content", "tobiz_validate_site_recipe",
     "tobiz_validate_media_recipe", "tobiz_prepare_site_package", "tobiz_preflight_site_build",
     "tobiz_build_site_package", "tobiz_fill_package_media", "tobiz_fill_package_content",
@@ -199,7 +200,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             resolved_goal = goal or site_plan_domain.infer_goal(brief)
             story = composition_domain.analyze(draft, resolved_goal)
             architecture = site_plan_domain.architecture_readiness(story, resolved_goal)
-            return "accepted", (candidate, draft, passport, architecture)
+            conversion = site_plan_domain.conversion_readiness(draft, brief)
+            return "accepted", (candidate, draft, passport, architecture, conversion)
 
         inspected = await asyncio.gather(*(inspect_candidate(candidate) for candidate in ranked))
         accepted = [value for status, value in inspected if status == "accepted"]
@@ -209,8 +211,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                 errors.NOT_FOUND, "В текущем аккаунте нет доступного проверенного шаблона",
                 "Зарегистрируйте страницу через tobiz_register_design_template",
                 raw={"code": "no_available_design_template", "rejected": rejected})
-        accepted.sort(key=lambda item: not item[3]["ready"])
-        selected, draft, passport, architecture = accepted[0]
+        accepted.sort(key=lambda item: (not item[3]["ready"], not item[4]["ready"]))
+        selected, draft, passport, architecture, conversion = accepted[0]
         available_items = [item[0] for item in accepted]
         bounded = max(1, min(int(top_k), len(available_items)))
         resolved = {**selection, "recommended": selected,
@@ -222,7 +224,10 @@ def register(mcp: Any, service: Service) -> list[str]:
                     "architecture_checked": True,
                     "architecture_ready": architecture["ready"],
                     "architecture_incomplete_sources": [
-                        item[0]["id"] for item in accepted if item[3]["ready"] is False]}
+                        item[0]["id"] for item in accepted if item[3]["ready"] is False],
+                    "conversion_ready": conversion["ready"],
+                    "conversion_incomplete_sources": [
+                        item[0]["id"] for item in accepted if item[4]["ready"] is False]}
         return resolved, selected, draft, passport
 
     def ensure_template_current(selected: dict[str, Any], draft: Any) -> dict[str, Any]:
@@ -1408,6 +1413,18 @@ def register(mcp: Any, service: Service) -> list[str]:
                 "alternatives": plan.get("alternatives") or [],
             },
             "architecture": plan["architecture_readiness"],
+        }
+
+    @tool("tobiz_validate_conversion_path", "Select an available verified native template and check "
+          "its lead forms before creating a page. Validates requested form_fields, submit button and the "
+          "rule that Name precedes Phone. Read-only; no custom form or code is created.")
+    async def tobiz_validate_conversion_path(brief: dict[str, Any],
+                                              goal: str = "") -> dict[str, Any]:
+        plan = await tobiz_plan_site(brief, goal)
+        return {
+            "plan_id": plan["plan_id"],
+            "template": plan["template"],
+            "conversion": plan["conversion_readiness"],
         }
 
     @tool("tobiz_compile_site_content", "Compile an evidence-bound copywriting manifest for a native "

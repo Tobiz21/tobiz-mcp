@@ -8,7 +8,9 @@ from tobiz_mcp.domain.draft import Draft, DraftBlock
 def draft():
     return Draft('1', '2', blocks={
         '10': DraftBlock('10', '1154', {'title': 'Курс математики', 'bg_image': 'hero.jpg'}),
-        '11': DraftBlock('11', '306', {'title': 'Записаться', 'form1': [{'type': 'phone'}]}),
+        '11': DraftBlock('11', '306', {'title': 'Записаться', 'form1': [
+            {'type': 'name'}, {'type': 'phone'}, {'type': 'btn'},
+        ]}),
     }, order=['10', '11'])
 
 
@@ -123,6 +125,46 @@ def test_architecture_readiness_accepts_complete_education_story():
     }, 'education')
     assert result['ready'] is True
     assert result['blockers'] == []
+
+
+def test_conversion_readiness_accepts_requested_native_form_fields():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': 'Ваше имя'},
+            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'date', 'title': 'Дата мероприятия'},
+            {'type': 'number', 'title': 'Количество гостей'},
+            {'type': 'btn', 'title': 'Узнать свободное время'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {
+        'form_fields': ['имя', 'телефон', 'дата', 'количество гостей']})
+    assert result['ready'] is True
+    assert result['required_fields'] == ['name', 'phone', 'date', 'guests']
+    assert result['matching_forms'] == 1
+
+
+def test_conversion_readiness_rejects_missing_name_button_and_wrong_order():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'text', 'title': 'Ваше имя'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is False
+    assert {item['code'] for item in result['blockers']} == {
+        'form_contract_not_covered', 'lead_form_name_order_invalid'}
+    assert result['forms'][0]['has_button'] is False
+
+
+def test_conversion_readiness_rejects_template_without_native_form():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '1154', {'title': 'Первый экран'}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is False
+    assert result['blockers'][0]['code'] == 'native_form_missing'
 
 
 def test_plan_comparison_detects_structure_and_role_drift():

@@ -289,6 +289,105 @@ def architecture_readiness(story: dict[str, Any], goal: str) -> dict[str, Any]:
     }
 
 
+def _form_field_role(item: dict[str, Any]) -> str:
+    field_type = str(item.get("type") or "").lower()
+    text = " ".join(str(item.get(key) or "") for key in (
+        "type", "title", "placeholder", "name")).lower().replace("ё", "е")
+    if field_type in {"btn", "button", "submit"}:
+        return "button"
+    if field_type in {"phone", "tel"} or re.search(r"телефон|phone|\btel\b", text):
+        return "phone"
+    if field_type == "email" or re.search(r"e-?mail|почт", text):
+        return "email"
+    if field_type == "date" or re.search(r"дата|date", text):
+        return "date"
+    if re.search(r"гост|участник|человек", text):
+        return "guests"
+    if field_type in {"text", "name"} and re.search(r"имя|фио|name", text):
+        return "name"
+    return field_type or "unknown"
+
+
+def _requested_form_fields(brief: dict[str, Any]) -> list[str]:
+    supplied = brief.get("form_fields")
+    if not isinstance(supplied, (list, tuple)) or not supplied:
+        return ["name", "phone"]
+    aliases = {
+        "имя": "name", "фио": "name", "name": "name",
+        "телефон": "phone", "phone": "phone", "tel": "phone",
+        "почта": "email", "email": "email", "e-mail": "email",
+        "дата": "date", "date": "date",
+        "гости": "guests", "количество гостей": "guests", "guests": "guests",
+    }
+    normalized = []
+    for value in supplied:
+        key = re.sub(r"\s+", " ", str(value).strip().lower().replace("ё", "е"))
+        role = aliases.get(key, key)
+        if role and role not in normalized:
+            normalized.append(role)
+    return normalized
+
+
+def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
+    """Validate native lead forms against the requested conversion contract."""
+    required = _requested_form_fields(brief)
+    forms = []
+    for position, block_id in enumerate(draft.order):
+        block = draft.blocks[block_id]
+        if block.deleted:
+            continue
+        for key, value in block.values.items():
+            if not re.fullmatch(r"form\d+", str(key)) or not isinstance(value, list) or not value:
+                continue
+            roles = [_form_field_role(item) for item in value if isinstance(item, dict)]
+            missing = [role for role in required if role not in roles]
+            name_index = roles.index("name") if "name" in roles else -1
+            phone_index = roles.index("phone") if "phone" in roles else -1
+            forms.append({
+                "block_index": position,
+                "block_id": str(block_id),
+                "form_key": str(key),
+                "fields": roles,
+                "missing_required_fields": missing,
+                "has_button": "button" in roles,
+                "name_before_phone": (name_index >= 0 and phone_index >= 0
+                                      and name_index < phone_index),
+                "matches_contract": (not missing and "button" in roles
+                                     and ("phone" not in required or name_index < phone_index)),
+            })
+    matching = [item for item in forms if item["matches_contract"]]
+    blockers = []
+    if not forms:
+        blockers.append({
+            "code": "native_form_missing",
+            "action": "Выбрать шаблон со штатной формой TOBIZ.",
+        })
+    elif not matching:
+        blockers.append({
+            "code": "form_contract_not_covered",
+            "required_fields": required,
+            "forms": forms,
+            "action": "Выбрать штатную форму со всеми нужными полями и кнопкой отправки.",
+        })
+    invalid_lead_forms = [item for item in forms
+                          if "phone" in item["fields"] and not item["name_before_phone"]]
+    if invalid_lead_forms:
+        blockers.append({
+            "code": "lead_form_name_order_invalid",
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+                      for item in invalid_lead_forms],
+            "action": "Поставить поле «Имя» перед «Телефоном» штатной настройкой формы.",
+        })
+    return {
+        "ready": not blockers,
+        "required_fields": required,
+        "forms": forms,
+        "matching_forms": len(matching),
+        "blockers": blockers,
+        "rule": "Использовать штатную форму; поле «Имя» идет перед «Телефоном».",
+    }
+
+
 def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, Any],
           blueprint: dict[str, Any], draft, goal: str | None = None) -> dict[str, Any]:
     goal = goal or infer_goal(brief)
@@ -354,6 +453,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
     plan["content_brief"] = compile_content_brief(brief, plan)
     plan["brief_readiness"] = brief_readiness(brief, goal)
     plan["architecture_readiness"] = architecture_readiness(story, goal)
+    plan["conversion_readiness"] = conversion_readiness(draft, brief)
     return plan
 
 
@@ -574,6 +674,14 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "details": architecture.get("blockers") or [],
             "action": "Выбрать другой проверенный шаблон; не добавлять случайные или самописные блоки.",
         })
+    conversion = plan.get("conversion_readiness") or {}
+    if conversion and not conversion.get("ready"):
+        issues.append({
+            "priority": "improve" if draft_mode else "must_fix",
+            "code": "conversion_path_incomplete",
+            "details": conversion.get("blockers") or [],
+            "action": "Выбрать шаблон с подходящей штатной формой до создания страницы.",
+        })
     if blueprint.get("photo_slots") and media_result is None:
         issues.append({
             "priority": "improve" if draft_mode else "must_fix",
@@ -631,6 +739,7 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         "plan_id": plan.get("plan_id"), "mode": "prototype" if draft_mode else "quality",
         "ready_for_build": not blockers, "content": content_result, "media": media_result,
         "brief_readiness": readiness, "architecture_readiness": architecture,
+        "conversion_readiness": conversion,
         "seo": {"provided": bool(seo_values)},
         "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),

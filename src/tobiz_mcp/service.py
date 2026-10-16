@@ -1701,6 +1701,7 @@ class Service:
                 "design_template_candidate_discovery",
                 "evidence_first_brief_gate",
                 "goal_specific_architecture_gate",
+                "native_conversion_contract_gate",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

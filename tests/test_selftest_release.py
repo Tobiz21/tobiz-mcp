@@ -77,6 +77,7 @@ class FakeService:
             "design_template_candidate_discovery",
             "evidence_first_brief_gate",
             "goal_specific_architecture_gate",
+            "native_conversion_contract_gate",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")
