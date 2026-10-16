@@ -29,6 +29,7 @@ from .domain import design_feedback as design_feedback_domain
 from .domain import design_reference as design_reference_domain
 from .domain import layout as layout_domain
 from .domain import module_quality as module_quality_domain
+from .domain import multipage as multipage_domain
 from .domain import project_quality as project_quality_domain
 from .domain import refinement as refinement_domain
 from .service import Service
@@ -75,6 +76,7 @@ READ_TOOLS = {
     "tobiz_audit_composition",
     "tobiz_compare_design_reference", "tobiz_release_design_gate", "tobiz_audit_images",
     "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
+    "tobiz_plan_multipage_site",
     "tobiz_validate_conversion_path",
     "tobiz_start_site",
     "tobiz_compile_site_content", "tobiz_validate_site_recipe",
@@ -1449,6 +1451,23 @@ def register(mcp: Any, service: Service) -> list[str]:
             brief, selection, selected, blueprint, source_draft, goal or None)
         plan["template_passport"] = template_passport
         return plan
+
+    @tool("tobiz_plan_multipage_site",
+          "Plan a complete native TOBIZ multi-page site before creating anything. Validates one home "
+          "page, unique routes, concise shared navigation and the purpose of every page, then creates "
+          "a quality plan for each page and requires one visual system. Read-only.")
+    async def tobiz_plan_multipage_site(site_brief: dict[str, Any],
+                                        pages: list[dict[str, Any]]) -> dict[str, Any]:
+        manifest = multipage_domain.validate(site_brief, pages)
+        if not manifest["ready_for_planning"]:
+            return manifest | {"ready_for_packages": False,
+                               "next_action": "fix_multipage_manifest"}
+        plans = []
+        for page in manifest["pages"]:
+            plan = await tobiz_plan_site(page["brief"], page["goal"])
+            plans.append({"key": page["key"], "title": page["title"],
+                          "slug": page["slug"], "href": page["href"], **plan})
+        return multipage_domain.combine(manifest, plans)
 
     @tool("tobiz_validate_brief", "Check whether a client brief contains the minimum verified facts "
           "needed for a trustworthy TOBIZ site. Returns only the missing required questions, optional "

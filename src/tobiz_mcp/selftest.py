@@ -181,6 +181,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "article_product_preflight",
         "multipage_project_quality_audit",
         "four_workflow_control_scenarios",
+        "native_multipage_site_planning",
         "one_call_site_workflow_start",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))

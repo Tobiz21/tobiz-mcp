@@ -223,6 +223,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_list_projects` | проекты (сайты) аккаунта |
 | `tobiz_list_pages` | страницы проекта |
 | `tobiz_audit_project` | целостность многостраничного сайта: URL и SEO, композиция страниц, единые типы шапки/подвала, конверсионный выход |
+| `tobiz_plan_multipage_site` | единый read-only план многостраничного сайта: главная, уникальные маршруты, общее меню, назначение и quality-план каждой страницы |
 | `tobiz_page_summary` | компактная карта страницы: порядок блоков, короткий текст, SEO-подсказка |
 | `tobiz_list_blocks`, `tobiz_get_block` | блоки страницы и значения полей блока |
 | `tobiz_page_info` | параметры страницы как в панели: название, URL, SEO, og:image, доступ |
