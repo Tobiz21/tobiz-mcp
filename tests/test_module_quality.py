@@ -43,6 +43,15 @@ def test_complete_article_is_ready_for_publication():
     assert result["metrics"]["headings"] == 2
 
 
+def test_article_can_enforce_client_longform_length():
+    result = module_quality.audit_article(article(), minimum_body_chars=9000)
+    assert result["ready_for_publication"] is False
+    issue = next(item for item in result["blockers"]
+                 if item["code"] == "article_body_too_short")
+    assert issue["required_chars"] == 9000
+    assert result["metrics"]["minimum_body_chars"] == 9000
+
+
 def test_article_audit_blocks_thin_unstructured_placeholder():
     result = module_quality.audit_article({
         "id": "1", "title": "Заголовок", "description": "Текст",
@@ -165,6 +174,19 @@ async def test_module_preflight_tools_do_not_access_tobiz():
         fields=product_value, category_ids=["4"], image_count=1)
     assert article_response["data"]["ready_for_publication"] is True
     assert product_response["data"]["ready_for_publication"] is True
+
+
+@pytest.mark.asyncio
+async def test_article_preflight_tool_enforces_requested_longform_length():
+    service = SimpleNamespace(config=SimpleNamespace(read_only=False))
+    value = article()
+    value.pop("images")
+    value.pop("categories")
+    response = await registered_functions(service)["tobiz_preflight_article"](
+        fields=value, category_ids=["2"], image_count=1, minimum_body_chars=9000)
+    assert response["ok"] is True
+    assert response["data"]["ready_for_publication"] is False
+    assert response["data"]["metrics"]["minimum_body_chars"] == 9000
 
 
 @pytest.mark.asyncio

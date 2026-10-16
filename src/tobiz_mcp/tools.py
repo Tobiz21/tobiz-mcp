@@ -142,6 +142,18 @@ def _entity_category_ids(entity: dict[str, Any]) -> list[str]:
     return result
 
 
+def _article_minimum(value: int) -> int:
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as exc:
+        raise errors.TobizError(errors.BAD_ARGUMENT,
+                                "minimum_body_chars должен быть целым") from exc
+    if not 500 <= result <= 100_000:
+        raise errors.TobizError(errors.BAD_ARGUMENT,
+                                "minimum_body_chars должен быть от 500 до 100000")
+    return result
+
+
 async def _all_module_rows(service: Service, project_id: str, kind: str,
                            key: str) -> tuple[list[dict[str, Any]], bool]:
     """Read a complete module inventory and detect broken pagination."""
@@ -618,7 +630,9 @@ def register(mcp: Any, service: Service) -> list[str]:
     async def tobiz_release_project_gate(
             project_id: Id | None = None, goal: str = "lead_generation",
             require_articles: bool = False, require_products: bool = False,
-            allow_price_on_request: bool = False) -> dict[str, Any]:
+            allow_price_on_request: bool = False,
+            minimum_article_body_chars: int = 1500) -> dict[str, Any]:
+        minimum_article_body_chars = _article_minimum(minimum_article_body_chars)
         page_audit = await tobiz_audit_project(project_id=project_id, goal=goal)
         resolved_project_id = str(page_audit["project_id"])
         article_rows, articles_complete = await _all_module_rows(
@@ -631,7 +645,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             entity_id = str(row.get("id") or "")
             if entity_id:
                 article = await service.module_get(resolved_project_id, "article", entity_id)
-                article_audits.append(module_quality_domain.audit_article(article))
+                article_audits.append(module_quality_domain.audit_article(
+                    article, minimum_body_chars=minimum_article_body_chars))
         for row in product_rows:
             entity_id = str(row.get("id") or "")
             if entity_id:
@@ -857,19 +872,25 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Read-only publication audit for one TOBIZ article: title, excerpt, semantic HTML "
           "structure, text depth, SEO, category and native images. Returns blockers and a 0-10 score.")
     async def tobiz_audit_article(project_id: Id | None = None,
-                                  article_id: Id = "") -> dict[str, Any]:
+                                  article_id: Id = "",
+                                  minimum_body_chars: int = 1500) -> dict[str, Any]:
+        minimum_body_chars = _article_minimum(minimum_body_chars)
         project = await service.project(project_id)
         article = await service.module_get(project.project_id, "article", article_id)
-        return module_quality_domain.audit_article(article)
+        return module_quality_domain.audit_article(
+            article, minimum_body_chars=minimum_body_chars)
 
     @tool("tobiz_preflight_article",
           "Read-only validation of a complete proposed article before creating it. Pass the final "
           "fields, category_ids and number of images that will be uploaded.")
     async def tobiz_preflight_article(fields: dict[str, Any] | None = None,
                                       category_ids: list[Id] | None = None,
-                                      image_count: int = 0) -> dict[str, Any]:
+                                      image_count: int = 0,
+                                      minimum_body_chars: int = 1500) -> dict[str, Any]:
+        minimum_body_chars = _article_minimum(minimum_body_chars)
         return module_quality_domain.preflight_article(
-            fields or {}, list(category_ids or []), image_count)
+            fields or {}, list(category_ids or []), image_count,
+            minimum_body_chars=minimum_body_chars)
 
     @tool("tobiz_publish_article_package",
           "Preview or atomically publish a complete native TOBIZ article. The package contains "
@@ -880,12 +901,14 @@ def register(mcp: Any, service: Service) -> list[str]:
             project_id: Id | None = None, fields: dict[str, Any] | None = None,
             category_ids: list[Id] | None = None,
             images: list[dict[str, Any]] | None = None,
-            apply: bool = False) -> dict[str, Any]:
+            minimum_body_chars: int = 1500, apply: bool = False) -> dict[str, Any]:
+        minimum_body_chars = _article_minimum(minimum_body_chars)
         final_fields = dict(fields or {})
         final_categories = list(category_ids or [])
         final_images = _package_images(images)
         preflight = module_quality_domain.preflight_article(
-            final_fields, final_categories, len(final_images))
+            final_fields, final_categories, len(final_images),
+            minimum_body_chars=minimum_body_chars)
         plan = {"kind": "article", "fields": final_fields,
                 "category_ids": final_categories, "image_count": len(final_images),
                 "preflight": preflight}
@@ -908,7 +931,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                     project.project_id, "article", entity_id, image.get("path"),
                     image.get("content_base64"), image.get("file_name"))
             article = await service.module_get(project.project_id, "article", entity_id)
-            audit = module_quality_domain.audit_article(article)
+            audit = module_quality_domain.audit_article(
+                article, minimum_body_chars=minimum_body_chars)
             if not audit["ready_for_publication"]:
                 raise errors.TobizError(errors.SAVE_FAILED,
                                         "Статья создана, но не прошла итоговый аудит",
@@ -959,7 +983,9 @@ def register(mcp: Any, service: Service) -> list[str]:
     async def tobiz_update_article_package(
             project_id: Id | None = None, article_id: Id = "",
             fields: dict[str, Any] | None = None,
-            category_ids: list[Id] | None = None, apply: bool = False) -> dict[str, Any]:
+            category_ids: list[Id] | None = None,
+            minimum_body_chars: int = 1500, apply: bool = False) -> dict[str, Any]:
+        minimum_body_chars = _article_minimum(minimum_body_chars)
         project = await service.project(project_id)
         current = await service.module_get(project.project_id, "article", article_id)
         updates = dict(fields or {})
@@ -970,7 +996,8 @@ def register(mcp: Any, service: Service) -> list[str]:
                             else [str(value) for value in category_ids])
         candidate = {**current, **updates}
         preflight = module_quality_domain.preflight_article(
-            candidate, final_categories, len(current.get("images") or []))
+            candidate, final_categories, len(current.get("images") or []),
+            minimum_body_chars=minimum_body_chars)
         if not apply:
             return {"dry_run": True, "ready_for_apply": preflight["ready_for_publication"],
                     "article_id": str(article_id), "preflight": preflight}
@@ -984,7 +1011,8 @@ def register(mcp: Any, service: Service) -> list[str]:
             await service.module_update(project.project_id, "article", str(article_id), updates,
                                         final_categories if category_ids is not None else None)
             saved = await service.module_get(project.project_id, "article", article_id)
-            audit = module_quality_domain.audit_article(saved)
+            audit = module_quality_domain.audit_article(
+                saved, minimum_body_chars=minimum_body_chars)
             if not audit["ready_for_publication"]:
                 raise errors.TobizError(errors.SAVE_FAILED,
                                         "Обновленная статья не прошла итоговый аудит", raw=audit)

@@ -177,6 +177,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "nested_form_editor_roundtrip",
         "broken_form_editor_blocker",
         "article_publication_quality_audit",
+        "configurable_article_depth_gate",
         "product_publication_quality_audit",
         "article_product_preflight",
         "transactional_article_product_publication",

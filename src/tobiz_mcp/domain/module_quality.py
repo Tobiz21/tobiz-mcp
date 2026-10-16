@@ -65,7 +65,9 @@ def _result(kind: str, entity: dict[str, Any], issues: list[dict[str, Any]],
     }
 
 
-def audit_article(article: dict[str, Any]) -> dict[str, Any]:
+def audit_article(article: dict[str, Any], minimum_body_chars: int = 1500) -> dict[str, Any]:
+    if not 500 <= int(minimum_body_chars) <= 100_000:
+        raise ValueError("minimum_body_chars must be between 500 and 100000")
     issues: list[dict[str, Any]] = []
     title = _plain(article.get("title"))
     short = _plain(article.get("short_description"))
@@ -79,9 +81,10 @@ def audit_article(article: dict[str, Any]) -> dict[str, Any]:
     if not 80 <= len(short) <= 400 or _placeholder(short):
         _issue(issues, "must_fix", "article_excerpt_weak",
                "Подготовить самостоятельный анонс статьи длиной 80-400 символов.", chars=len(short))
-    if len(body) < 1500 or _placeholder(body):
+    if len(body) < minimum_body_chars or _placeholder(body):
         _issue(issues, "must_fix", "article_body_too_short",
-               "Раскрыть тему статьи содержательным текстом не короче 1500 символов.", chars=len(body))
+               f"Раскрыть тему статьи текстом не короче {minimum_body_chars} символов.",
+               chars=len(body), required_chars=minimum_body_chars)
     if headings < 2:
         _issue(issues, "improve", "article_structure_flat",
                "Разделить материал минимум двумя смысловыми подзаголовками H2/H3.", headings=headings)
@@ -97,18 +100,19 @@ def audit_article(article: dict[str, Any]) -> dict[str, Any]:
         "headings": headings, "images": len(images),
         "categories": len(_list(article.get("categories"))),
         "iframes": len(re.findall(r"<iframe\b", html, re.I)),
+        "minimum_body_chars": minimum_body_chars,
     })
 
 
 def preflight_article(fields: dict[str, Any], category_ids: list[Any] | None = None,
-                      image_count: int = 0) -> dict[str, Any]:
+                      image_count: int = 0, minimum_body_chars: int = 1500) -> dict[str, Any]:
     """Audit a proposed article package before TOBIZ creates a persistent entity."""
     candidate = dict(fields or {})
     candidate["id"] = "preview"
     candidate["categories"] = list(category_ids or [])
     candidate["images"] = [{"id": f"planned-{index + 1}"}
                            for index in range(max(0, int(image_count or 0)))]
-    result = audit_article(candidate)
+    result = audit_article(candidate, minimum_body_chars=minimum_body_chars)
     result["preview"] = True
     result["next_action"] = (
         "Create the article with native TOBIZ tools, upload the planned images, then run "
