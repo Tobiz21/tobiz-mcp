@@ -531,13 +531,69 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
         issues.append({"priority": "must_fix", "code": "recipe_incomplete",
                        "action": "Заменить все meaningful-поля, отмеченные в missing и unchanged."})
     evidence = plan.get("content_brief") or {}
+    evidence_coverage = validate_evidence_coverage(plan, recipe)
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
     return {
         "plan_id": plan.get("plan_id"), "ready_for_build": not blockers,
         "coverage": coverage, "claims": claims,
         "evidence_ready": bool(evidence.get("ready_for_copywriting")),
         "missing_evidence": evidence.get("missing_evidence") or [],
+        "evidence_coverage": evidence_coverage,
         "issues": issues, "blockers": blockers,
+    }
+
+
+def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
+    """Ensure every confirmed brief fact is intentionally represented in native copy slots."""
+    readiness = plan.get("brief_readiness") or {}
+    required = list(readiness.get("confirmed_fields") or [])
+    allowed = set(required)
+    mapped: dict[str, list[dict[str, Any]]] = {code: [] for code in required}
+    unknown = []
+    for slot in recipe.get("slots") or []:
+        if not isinstance(slot, dict):
+            continue
+        codes = slot.get("evidence_codes")
+        if codes is None:
+            continue
+        if not isinstance(codes, list):
+            unknown.append({
+                "block_index": slot.get("block_index"), "path": slot.get("path"),
+                "code": "invalid_evidence_codes",
+            })
+            continue
+        for code in codes:
+            normalized = str(code).strip()
+            if normalized not in allowed:
+                unknown.append({
+                    "block_index": slot.get("block_index"), "path": slot.get("path"),
+                    "code": normalized,
+                })
+                continue
+            if str(slot.get("value") or "").strip():
+                mapped[normalized].append({
+                    "block_index": slot.get("block_index"), "path": slot.get("path")})
+    missing = [code for code in required if not mapped[code]]
+    issues = []
+    if missing:
+        issues.append({
+            "priority": "must_fix", "code": "confirmed_evidence_not_used",
+            "evidence_codes": missing,
+            "action": "Связать каждый подтвержденный факт с конкретным текстовым слотом.",
+        })
+    if unknown:
+        issues.append({
+            "priority": "must_fix", "code": "unknown_evidence_mapping",
+            "items": unknown,
+            "action": "Использовать только коды из brief_readiness.confirmed_fields.",
+        })
+    return {
+        "ready": not issues,
+        "required": required,
+        "covered": [code for code in required if mapped[code]],
+        "missing": missing,
+        "mappings": mapped,
+        "issues": issues,
     }
 
 
@@ -680,6 +736,9 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
             "question": item["question"],
             "action": "Получить подтвержденный факт от клиента или включить режим прототипа.",
         })
+    evidence_coverage = content_result["evidence_coverage"]
+    for item in evidence_coverage["issues"]:
+        issues.append({**item, "priority": "improve" if draft_mode else "must_fix"})
     architecture = plan.get("architecture_readiness") or {}
     if architecture and not architecture.get("ready"):
         issues.append({
@@ -754,6 +813,7 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         "ready_for_build": not blockers, "content": content_result, "media": media_result,
         "brief_readiness": readiness, "architecture_readiness": architecture,
         "conversion_readiness": conversion,
+        "evidence_coverage": evidence_coverage,
         "seo": {"provided": bool(seo_values)},
         "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),
@@ -774,6 +834,7 @@ def prepare_build_package(brief: dict[str, Any], plan: dict[str, Any],
         recipe_slots.append({
             "block_index": slot.get("block_index"), "path": slot.get("path"),
             "kind": slot.get("kind"), "role": slot.get("role"), "value": "",
+            "evidence_codes": [],
             "instruction": guidance.get("instruction"),
             **({"recommended_max_chars": slot["recommended_max_chars"]}
                if slot.get("recommended_max_chars") else {}),
@@ -916,6 +977,11 @@ def fill_package_content(package: dict[str, Any], updates: list[dict[str, Any]],
         if not isinstance(value, str):
             raise ValueError(f"Content value must be a string: {key}")
         slot["value"] = value.strip()
+        if "evidence_codes" in item:
+            codes = item.get("evidence_codes")
+            if not isinstance(codes, list) or any(not str(code).strip() for code in codes):
+                raise ValueError(f"evidence_codes must be a list of non-empty codes: {key}")
+            slot["evidence_codes"] = list(dict.fromkeys(str(code).strip() for code in codes))
         maximum = slot.get("recommended_max_chars")
         if isinstance(maximum, int) and maximum > 0 and len(slot["value"]) > maximum:
             warnings.append({"code": "copy_exceeds_mobile_limit", "block_index": key[0],

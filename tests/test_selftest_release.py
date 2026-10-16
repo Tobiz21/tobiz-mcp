@@ -79,6 +79,7 @@ class FakeService:
             "goal_specific_architecture_gate",
             "native_conversion_contract_gate",
             "semantic_media_assignment_gate",
+            "brief_to_copy_evidence_traceability",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

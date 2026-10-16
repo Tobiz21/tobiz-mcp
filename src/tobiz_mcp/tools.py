@@ -1441,7 +1441,8 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     @tool("tobiz_validate_site_recipe", "Validate proposed native-template copy before creating a page. "
           "Checks the locked block sequence, meaningful-slot coverage, mobile text limits, card-copy balance, "
-          "CTA specificity and unsupported factual claims. Read-only; returns exact slots and never rewrites text.")
+          "CTA specificity, unsupported factual claims and evidence_codes coverage. Read-only; returns exact "
+          "slots and never rewrites text.")
     async def tobiz_validate_site_recipe(brief: dict[str, Any], recipe: dict[str, Any],
                                          goal: str = "") -> dict[str, Any]:
         if not isinstance(recipe, dict):

@@ -1703,6 +1703,7 @@ class Service:
                 "goal_specific_architecture_gate",
                 "native_conversion_contract_gate",
                 "semantic_media_assignment_gate",
+                "brief_to_copy_evidence_traceability",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

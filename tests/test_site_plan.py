@@ -272,8 +272,10 @@ def test_unified_preflight_accepts_complete_quality_package():
             'hero', 'programs', 'benefits', 'process', 'expert', 'proof', 'cta', 'contact'],
     }, 'education')
     recipe = {'types': ['1154', '306'], 'slots': [
-        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.'},
-        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
+        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.',
+         'evidence_codes': ['program', 'format', 'expert', 'result']},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс',
+         'evidence_codes': ['contact']},
     ]}
     media = {'groups': [{
         'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
@@ -293,6 +295,32 @@ def test_unified_preflight_accepts_complete_quality_package():
     assert result['ready_for_build'] is True
     assert result['mode'] == 'quality'
     assert result['next_action'] == 'build'
+    assert result['evidence_coverage']['missing'] == []
+
+
+def test_evidence_coverage_reports_confirmed_facts_omitted_from_copy():
+    plan = {'brief_readiness': {
+        'confirmed_fields': ['program', 'format', 'expert', 'result', 'contact']}}
+    recipe = {'slots': [
+        {'block_index': 0, 'path': '/title', 'value': 'Курс математики',
+         'evidence_codes': ['program', 'format']},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться',
+         'evidence_codes': ['contact']},
+    ]}
+    result = site_plan.validate_evidence_coverage(plan, recipe)
+    assert result['ready'] is False
+    assert result['missing'] == ['expert', 'result']
+    assert result['issues'][0]['code'] == 'confirmed_evidence_not_used'
+
+
+def test_evidence_coverage_rejects_unknown_mapping_code():
+    result = site_plan.validate_evidence_coverage(
+        {'brief_readiness': {'confirmed_fields': ['offer']}},
+        {'slots': [{'block_index': 0, 'path': '/title', 'value': 'Услуга',
+                    'evidence_codes': ['offer', 'invented_award']}]})
+    assert result['ready'] is False
+    assert result['covered'] == ['offer']
+    assert result['issues'][0]['code'] == 'unknown_evidence_mapping'
 
 
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
@@ -348,6 +376,7 @@ def test_prepare_package_returns_clean_exact_fill_in_contract():
     assert package['package_id'] == f"{plan['plan_id']}:v1"
     assert package['recipe']['types'] == ['1154', '306']
     assert all(slot['value'] == '' for slot in package['recipe']['slots'])
+    assert all(slot['evidence_codes'] == [] for slot in package['recipe']['slots'])
     assert package['recipe']['slots'][0]['instruction']
     assert package['media_recipe']['groups'][0]['assets'][0] == {
         'path': '/bg_image', 'filename': '', 'width': 0, 'height': 0,
@@ -470,10 +499,12 @@ def test_fill_package_content_preserves_contract_and_warns_on_long_copy():
     }]}, 'seo': {'title': '', 'dir': '', 'seo_title': '', 'seo_description': ''}}
     result = site_plan.fill_package_content(package, [{
         'block_index': 0, 'path': '/title', 'value': 'Длинный заголовок',
+        'evidence_codes': ['offer'],
     }], {'dir': 'kurs-matematiki'})
     slot = result['package']['recipe']['slots'][0]
     assert slot['value'] == 'Длинный заголовок'
     assert slot['instruction'] == 'Короткий заголовок'
+    assert slot['evidence_codes'] == ['offer']
     assert result['package']['seo']['dir'] == 'kurs-matematiki'
     assert result['warnings'][0]['code'] == 'copy_exceeds_mobile_limit'
     assert package['recipe']['slots'][0]['value'] == ''
