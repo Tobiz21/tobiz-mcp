@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from . import claim_audit, composition, content, design_feedback
+from . import claim_audit, composition, content, dependencies, design_feedback
 
 
 PHOTO_RULES = {
@@ -432,6 +432,7 @@ def build(brief: dict[str, Any], selection: dict[str, Any], selected: dict[str, 
         "template": selected, "alternatives": selection.get("alternatives", [])[:2],
         "visual_references": selection.get("visual_references", []),
         "structure_locked": True, "sections": sections,
+        "anchors": sorted(dependencies.page_anchors(draft)),
         "recipe": blueprint.get("recipe"), "photo_requirements": photos,
         "design_system": {
             "visual_system": selected.get("visual_system"),
@@ -814,6 +815,31 @@ def merge_media_recipe(recipe: dict[str, Any], validation: dict[str, Any]) -> di
     return merged
 
 
+def validate_recipe_links(plan: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
+    """Validate internal recipe links against anchors preserved by the native template."""
+    anchors = {str(value).strip().lstrip("#") for value in plan.get("anchors") or []
+               if str(value).strip()}
+    issues = []
+    for slot in recipe.get("slots") or []:
+        if not isinstance(slot, dict) or not isinstance(slot.get("value"), str):
+            continue
+        value = slot["value"].strip()
+        location = {"block_index": slot.get("block_index"), "path": slot.get("path")}
+        if re.match(r"(?i)^javascript:", value):
+            issues.append({"priority": "must_fix", "code": "unsafe_recipe_link", **location,
+                           "action": "Использовать штатный якорь, форму или безопасный URL."})
+        elif value == "#":
+            issues.append({"priority": "must_fix", "code": "empty_recipe_anchor", **location,
+                           "action": "Привязать ссылку к существующей секции или форме."})
+        elif value.startswith("#") and value[1:] not in anchors:
+            issues.append({
+                "priority": "must_fix", "code": "missing_recipe_anchor", **location,
+                "anchor": value[1:], "available_anchors": sorted(anchors),
+                "action": "Использовать существующий штатный якорь выбранного шаблона.",
+            })
+    return {"valid": not issues, "anchors": sorted(anchors), "issues": issues}
+
+
 def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
                            blueprint: dict[str, Any], recipe: dict[str, Any] | None,
                            media_recipe: dict[str, Any] | None,
@@ -889,18 +915,8 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         ]}, brief)
         issues.extend(seo_claims.get("issues") or [])
 
-    for slot in (recipe or {}).get("slots") or []:
-        if not isinstance(slot, dict) or not isinstance(slot.get("value"), str):
-            continue
-        value = slot["value"].strip()
-        if re.match(r"(?i)^javascript:", value):
-            issues.append({"priority": "must_fix", "code": "unsafe_recipe_link",
-                           "block_index": slot.get("block_index"), "path": slot.get("path"),
-                           "action": "Использовать штатный якорь, форму или безопасный URL."})
-        if value == "#":
-            issues.append({"priority": "must_fix", "code": "empty_recipe_anchor",
-                           "block_index": slot.get("block_index"), "path": slot.get("path"),
-                           "action": "Привязать ссылку к существующей секции или форме."})
+    link_result = validate_recipe_links(plan, recipe or {})
+    issues.extend(link_result["issues"])
 
     blockers = [item for item in issues if item.get("priority") == "must_fix"]
     return {
@@ -909,6 +925,7 @@ def validate_build_package(brief: dict[str, Any], plan: dict[str, Any],
         "brief_readiness": readiness, "architecture_readiness": architecture,
         "conversion_readiness": conversion,
         "evidence_coverage": evidence_coverage,
+        "link_validation": link_result,
         "seo": {"provided": bool(seo_values)},
         "issues": issues, "blockers": blockers,
         "next_action": ("build" if not blockers else "fix_blockers_before_creating_page"),

@@ -42,6 +42,23 @@ def test_plan_is_deterministic_and_uses_native_slots():
     assert first['content_brief']['plan_id'] == first['plan_id']
     assert first['content_brief']['ready_for_copywriting'] is False
     assert first['content_brief']['slots'][0]['field_role'] == 'section_title'
+    assert first['anchors'] == []
+
+
+def test_recipe_links_require_existing_native_anchor():
+    result = site_plan.validate_recipe_links({'anchors': ['contacts', '#programs']}, {'slots': [
+        {'block_index': 0, 'path': '/btn1/link', 'value': '#contacts'},
+        {'block_index': 1, 'path': '/btn1/link', 'value': '#missing'},
+        {'block_index': 2, 'path': '/btn1/link', 'value': '#'},
+        {'block_index': 3, 'path': '/btn1/link', 'value': 'javascript:alert(1)'},
+    ]})
+    assert result['valid'] is False
+    assert result['anchors'] == ['contacts', 'programs']
+    assert {item['code'] for item in result['issues']} == {
+        'missing_recipe_anchor', 'empty_recipe_anchor', 'unsafe_recipe_link'}
+    missing = next(item for item in result['issues']
+                   if item['code'] == 'missing_recipe_anchor')
+    assert missing['available_anchors'] == ['contacts', 'programs']
 
 
 def test_content_compiler_requires_evidence_and_accepts_nested_facts():
