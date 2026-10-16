@@ -78,6 +78,7 @@ READ_TOOLS = {
     "tobiz_plan_site", "tobiz_validate_brief", "tobiz_validate_site_architecture",
     "tobiz_plan_multipage_site",
     "tobiz_prepare_multipage_package", "tobiz_multipage_package_status",
+    "tobiz_build_multipage_package",
     "tobiz_validate_conversion_path",
     "tobiz_start_site",
     "tobiz_compile_site_content", "tobiz_validate_site_recipe",
@@ -1507,6 +1508,71 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"multipage_package_id": package.get("multipage_package_id"),
                 "progress": multipage_domain.progress(package, statuses),
                 "page_statuses": statuses}
+
+    @tool("tobiz_build_multipage_package",
+          "Preview or transactionally build every ready page in a multi-page package. All nested "
+          "packages and shared navigation are preflighted first. On a build failure, pages created "
+          "by this call are deleted. Set replace_starter_page=true only for a new project containing "
+          "one disposable starter page.")
+    async def tobiz_build_multipage_package(
+            package: dict[str, Any], target_project_id: Id = "",
+            source_terms: list[str] | None = None, apply: bool = False,
+            replace_starter_page: bool = False,
+            viewports: list[str] | None = None) -> dict[str, Any]:
+        status = await tobiz_multipage_package_status(package)
+        progress = status["progress"]
+        if not progress.get("ready_for_build"):
+            if apply:
+                raise errors.TobizError(
+                    errors.BAD_ARGUMENT, "Многостраничный пакет не готов к сборке",
+                    "Исправьте вложенные пакеты и общую навигацию", raw=progress)
+            return {"preview": True, "can_apply": False, "progress": progress,
+                    "page_previews": [], "next_action": progress["next_action"]}
+        target = str(target_project_id or "").strip()
+        if not target:
+            raise errors.TobizError(errors.BAD_ARGUMENT, "Для сборки нужен целевой project_id")
+        project, existing_pages = await service.pages(target, refresh=True)
+        if replace_starter_page and len(existing_pages) > 1:
+            raise errors.TobizError(
+                errors.CONFLICT, "Автоудаление разрешено только для одного стартового листа",
+                "Используйте новый пустой проект или удалите лишние страницы вручную",
+                raw={"existing_page_ids": [page.page_id for page in existing_pages]})
+        previews = []
+        for page in package.get("pages") or []:
+            preview = await tobiz_build_site_package(
+                page["package"], target_project_id=target,
+                source_terms=source_terms, apply=False, viewports=viewports)
+            previews.append({"key": page.get("key"), "preview": preview})
+        if not apply:
+            return {"preview": True, "can_apply": True, "target_project_id": project.project_id,
+                    "progress": progress, "page_previews": previews,
+                    "starter_pages_to_remove": ([page.page_id for page in existing_pages]
+                                                if replace_starter_page else []),
+                    "next_action": "Повторить с apply=true"}
+        if service.config.read_only:
+            raise errors.read_only()
+        async def build_page(page: dict[str, Any]) -> dict[str, Any]:
+            return await tobiz_build_site_package(
+                page["package"], target_project_id=target,
+                source_terms=source_terms, apply=True, viewports=viewports)
+
+        async def rollback_page(page_id: str) -> Any:
+            return await service.delete_page(target, page_id, confirm=True)
+
+        created = await multipage_domain.transactional_build(
+            list(package.get("pages") or []), build_page, rollback_page)
+        cleanup = []
+        if replace_starter_page and len(existing_pages) == 1:
+            starter_id = existing_pages[0].page_id
+            try:
+                cleanup.append(await service.delete_page(target, starter_id, confirm=True))
+            except Exception as exc:  # keep the successfully built site and report exact cleanup
+                cleanup.append({"page_id": starter_id, "deleted": False, "error": str(exc)})
+        audit = await tobiz_audit_project(target, goal=str(
+            (package.get("site_brief") or {}).get("goal") or "lead_generation"))
+        return {"preview": False, "target_project_id": target, "created": created,
+                "cleanup": cleanup, "project_audit": audit,
+                "ready": bool(audit.get("ready"))}
 
     @tool("tobiz_validate_brief", "Check whether a client brief contains the minimum verified facts "
           "needed for a trustworthy TOBIZ site. Returns only the missing required questions, optional "

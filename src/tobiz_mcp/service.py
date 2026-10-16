@@ -1732,6 +1732,7 @@ class Service:
                 "four_workflow_control_scenarios",
                 "native_multipage_site_planning",
                 "resumable_multipage_site_package",
+                "transactional_multipage_site_build",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,

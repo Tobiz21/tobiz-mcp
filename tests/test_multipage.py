@@ -1,4 +1,5 @@
 from tobiz_mcp.domain import multipage
+import pytest
 
 
 SITE_BRIEF = {
@@ -75,9 +76,13 @@ def test_multipage_package_preserves_page_order_and_shared_menu():
 
 
 def test_multipage_progress_waits_for_every_page():
-    package_value = {"pages": [
-        {"key": "home", "title": "Главная"},
-        {"key": "services", "title": "Услуги"},
+    menu_slots = {"recipe": {"slots": [
+        {"kind": "link", "path": "/menu1/0/link", "value": "/"},
+        {"kind": "link", "path": "/menu1/1/link", "value": "/uslugi/"},
+    ]}}
+    package_value = {"menu": [{"href": "/"}, {"href": "/uslugi/"}], "pages": [
+        {"key": "home", "title": "Главная", "package": menu_slots},
+        {"key": "services", "title": "Услуги", "package": menu_slots},
     ]}
     result = multipage.progress(package_value, [
         {"key": "home", "progress": {"completion_percent": 100,
@@ -91,3 +96,33 @@ def test_multipage_progress_waits_for_every_page():
     assert result["pages_ready"] == 1
     assert result["completion_percent"] == 70
     assert result["next_action"] == "fill_incomplete_page_packages"
+
+
+def test_navigation_requires_every_route_on_every_page():
+    value = {"menu": [{"href": "/"}, {"href": "/uslugi/"}], "pages": [{
+        "key": "home", "package": {"recipe": {"slots": [
+            {"kind": "link", "path": "/menu1/0/link", "value": "/"},
+        ]}},
+    }]}
+    result = multipage.validate_navigation(value)
+    assert result["ready"] is False
+    assert result["issues"][0]["code"] == "multipage_navigation_incomplete"
+    assert result["issues"][0]["missing"] == ["/uslugi/"]
+
+
+@pytest.mark.asyncio
+async def test_transactional_build_rolls_back_created_pages_on_failure():
+    rolled_back = []
+
+    async def build(page):
+        if page["key"] == "services":
+            raise RuntimeError("upstream failed")
+        return {"page": {"page_id": "101"}}
+
+    async def rollback(page_id):
+        rolled_back.append(page_id)
+
+    with pytest.raises(RuntimeError, match="upstream failed"):
+        await multipage.transactional_build(
+            [{"key": "home"}, {"key": "services"}], build, rollback)
+    assert rolled_back == ["101"]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 
 GOALS = {"lead_generation", "education", "ecommerce"}
@@ -173,10 +173,60 @@ def progress(package_value: dict[str, Any], statuses: list[dict[str, Any]]) -> d
                       "completion_percent": int(page_progress.get("completion_percent") or 0),
                       "ready_for_build": page_progress.get("ready_for_build") is True,
                       "next_action": page_progress.get("next_action") or "check_page_package"})
-    ready = bool(items) and all(item["ready_for_build"] for item in items)
+    navigation = validate_navigation(package_value)
+    ready = (bool(items) and all(item["ready_for_build"] for item in items)
+             and navigation["ready"])
     average = round(sum(item["completion_percent"] for item in items) / len(items)) if items else 0
     return {"ready_for_build": ready, "completion_percent": average,
             "pages_ready": sum(item["ready_for_build"] for item in items),
-            "pages_total": len(items), "pages": items,
+            "pages_total": len(items), "pages": items, "navigation": navigation,
             "next_action": "tobiz_build_multipage_package" if ready
-                           else "fill_incomplete_page_packages"}
+                           else ("fix_shared_navigation" if not navigation["ready"]
+                                 else "fill_incomplete_page_packages")}
+
+
+def validate_navigation(package_value: dict[str, Any]) -> dict[str, Any]:
+    """Require every page package to contain the exact shared native menu routes."""
+    expected = [str(item.get("href") or "") for item in package_value.get("menu") or []]
+    issues: list[dict[str, Any]] = []
+    pages = package_value.get("pages") if isinstance(package_value.get("pages"), list) else []
+    for page in pages:
+        nested = page.get("package") if isinstance(page.get("package"), dict) else {}
+        slots = (nested.get("recipe") or {}).get("slots") or []
+        menu_links = [str(slot.get("value") or "").strip() for slot in slots
+                      if isinstance(slot, dict) and slot.get("kind") == "link"
+                      and "menu" in str(slot.get("path") or "").lower()]
+        if not menu_links:
+            _issue(issues, "multipage_native_menu_missing",
+                   "Использовать штатную шапку с редактируемым меню на каждой странице.",
+                   page_key=page.get("key"))
+            continue
+        missing = [href for href in expected if href not in menu_links]
+        if missing:
+            _issue(issues, "multipage_navigation_incomplete",
+                   "Заполнить общее штатное меню всеми маршрутами проекта.",
+                   page_key=page.get("key"), missing=missing, actual=menu_links)
+    return {"ready": not issues, "expected": expected, "issues": issues}
+
+
+async def transactional_build(
+        pages: list[dict[str, Any]],
+        build: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+        rollback: Callable[[str], Awaitable[Any]]) -> list[dict[str, Any]]:
+    """Build pages in order and roll back every page created by this call on failure."""
+    created: list[dict[str, Any]] = []
+    try:
+        for page in pages:
+            result = await build(page)
+            page_id = str((result.get("page") or {}).get("page_id") or "")
+            if not page_id:
+                raise ValueError("Builder did not return page.page_id")
+            created.append({"key": page.get("key"), "page_id": page_id, "result": result})
+    except Exception:
+        for item in reversed(created):
+            try:
+                await rollback(item["page_id"])
+            except Exception:
+                pass
+        raise
+    return created

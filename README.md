@@ -225,6 +225,7 @@ cp -r /tmp/tobiz-mcp/skills/tobiz-mcp ~/.hermes/skills/
 | `tobiz_audit_project` | целостность многостраничного сайта: URL и SEO, композиция страниц, единые типы шапки/подвала, конверсионный выход |
 | `tobiz_plan_multipage_site` | единый read-only план многостраничного сайта: главная, уникальные маршруты, общее меню, назначение и quality-план каждой страницы |
 | `tobiz_prepare_multipage_package`, `tobiz_multipage_package_status` | единый заполняемый конверт всех страниц и агрегированный прогресс без преждевременной записи в TOBIZ |
+| `tobiz_build_multipage_package` | общий preflight, preview и транзакционная штатная сборка всех страниц с откатом созданных страниц при сбое |
 | `tobiz_page_summary` | компактная карта страницы: порядок блоков, короткий текст, SEO-подсказка |
 | `tobiz_list_blocks`, `tobiz_get_block` | блоки страницы и значения полей блока |
 | `tobiz_page_info` | параметры страницы как в панели: название, URL, SEO, og:image, доступ |

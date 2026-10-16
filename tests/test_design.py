@@ -191,7 +191,8 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_preflight_product', 'tobiz_audit_product',
             'tobiz_audit_project', 'tobiz_plan_multipage_site',
             'tobiz_prepare_multipage_package',
-            'tobiz_multipage_package_status'} <= set(names)
+            'tobiz_multipage_package_status',
+            'tobiz_build_multipage_package'} <= set(names)
 
 
 def test_start_site_returns_questions_before_accessing_tobiz():
