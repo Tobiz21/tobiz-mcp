@@ -1695,6 +1695,7 @@ class Service:
                 "enforced_design_passport_freshness",
                 "local_design_passport_refresh",
                 "account_local_design_template_registry",
+                "quality_gated_design_template_registration",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

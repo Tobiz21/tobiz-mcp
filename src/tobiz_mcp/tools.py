@@ -277,11 +277,13 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     @tool("tobiz_register_design_template",
           "Register an existing page from the current TOBIZ account as a verified local design template. "
-          "Preview by default; apply=true stores only its passport and source IDs, never page content.")
+          "Runs desktop/tablet/mobile, composition and editor checks. Preview by default; apply=true "
+          "requires explicit visual approval and stores only its passport and source IDs, never page content.")
     async def tobiz_register_design_template(
             template_id: str, title: str, project_id: Id, page_id: Id,
             visual_system: str, site_kind: str, concepts: list[str], strengths: list[str],
             photo_dependency: str = "medium", content_density: str = "medium",
+            visual_review_approved: bool = False, visual_review_notes: str = "",
             apply: bool = False) -> dict[str, Any]:
         if any(item["id"] == str(template_id) for item in effective_templates()):
             raise errors.TobizError(errors.CONFLICT, f"Шаблон {template_id} уже существует")
@@ -295,11 +297,42 @@ def register(mcp: Any, service: Service) -> list[str]:
                 content_density=content_density, draft=draft)
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        brief = {"industry": title, "concepts": concepts, "needs": strengths}
+        goal = site_plan_domain.infer_goal(brief)
+        report = await service.inspect_page(
+            project_id, page_id, screenshot=True, viewports=QUALITY_VIEWPORTS)
+        audit = audit_domain.compact(report)
+        composition = composition_domain.analyze(draft, goal)
+        roundtrip = await service.editor_roundtrip(project_id, page_id)
+        registration = design_domain.template_registration_gate(
+            audit, composition, roundtrip,
+            visual_review_approved=visual_review_approved,
+            visual_review_notes=visual_review_notes)
+        evidence = {
+            "registration_gate": registration,
+            "screenshots": {name: data.get("screenshot")
+                            for name, data in (report.get("viewports") or {}).items()
+                            if data.get("screenshot")},
+            "audit_summary": {"critical": audit.get("critical") or [],
+                              "warnings": audit.get("warnings") or []},
+        }
         if not apply:
-            return {"preview": True, "passport": passport,
+            return {"preview": True, "passport": passport, "quality_evidence": evidence,
                     "next_action": "Inspect the source page, then repeat with apply=true."}
+        if not registration["ready"]:
+            raise errors.TobizError(
+                errors.CONFLICT, "Страница не прошла приемку локального шаблона",
+                "Исправьте blockers, просмотрите снимки и повторите регистрацию",
+                raw=registration)
+        passport["quality"] = {
+            "quality_score": registration["quality_score"],
+            "composition_score": registration["composition_score"],
+            "editor_safe": registration["editor_safe"],
+            "visual_review_notes": registration["visual_review"]["notes"],
+        }
         return {"preview": False, "stored": True,
-                "passport": service.save_custom_design_template(passport)}
+                "passport": service.save_custom_design_template(passport),
+                "quality_evidence": evidence}
 
     @tool("tobiz_list_design_feedback",
           "List locally stored human design evaluations. Read-only and contains no copied page content.")

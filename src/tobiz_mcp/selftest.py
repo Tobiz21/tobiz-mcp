@@ -146,6 +146,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "enforced_design_passport_freshness",
         "local_design_passport_refresh",
         "account_local_design_template_registry",
+        "quality_gated_design_template_registration",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {

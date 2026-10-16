@@ -47,6 +47,25 @@ def test_custom_design_passport_uses_live_native_structure():
     assert passport["source"] == "local_verified_page"
 
 
+def test_template_registration_requires_visual_and_technical_quality():
+    blocked = design.template_registration_gate(
+        {"critical": [{"code": "horizontal_overflow"}],
+         "quality_score": {"overall": 5}},
+        {"score": 6}, {"editor_safe": False},
+        visual_review_approved=False, visual_review_notes="")
+    assert blocked["ready"] is False
+    assert {item["code"] for item in blocked["blockers"]} == {
+        "template_render_failures", "template_editor_unsafe",
+        "template_composition_below_7", "template_visual_review_missing",
+    }
+    ready = design.template_registration_gate(
+        {"critical": [], "quality_score": {"overall": 8}},
+        {"score": 8}, {"editor_safe": True},
+        visual_review_approved=True,
+        visual_review_notes="Desktop, tablet and mobile reviewed; no overlaps.")
+    assert ready["ready"] is True
+
+
 def test_regional_drilling_prefers_long_native_construction_template():
     result = design.select({
         'industry': 'Бурение скважин в Чувашии',

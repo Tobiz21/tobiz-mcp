@@ -134,6 +134,31 @@ def custom_passport(*, template_id: str, title: str, project_id: str, page_id: s
     }
 
 
+def template_registration_gate(audit: dict[str, Any], composition: dict[str, Any],
+                               roundtrip: dict[str, Any], *, visual_review_approved: bool,
+                               visual_review_notes: str) -> dict[str, Any]:
+    blockers = []
+    if audit.get("critical"):
+        blockers.append({"code": "template_render_failures", "items": audit["critical"]})
+    if not roundtrip.get("editor_safe"):
+        blockers.append({"code": "template_editor_unsafe"})
+    if float(composition.get("score") or 0) < 7:
+        blockers.append({"code": "template_composition_below_7",
+                         "score": float(composition.get("score") or 0)})
+    if not visual_review_approved or not str(visual_review_notes).strip():
+        blockers.append({"code": "template_visual_review_missing",
+                         "action": "Просмотрите desktop/tablet/mobile снимки и опишите результат."})
+    return {
+        "ready": not blockers,
+        "blockers": blockers,
+        "quality_score": (audit.get("quality_score") or {}).get("overall"),
+        "composition_score": composition.get("score"),
+        "editor_safe": bool(roundtrip.get("editor_safe")),
+        "visual_review": {"approved": bool(visual_review_approved),
+                          "notes": str(visual_review_notes).strip()},
+    }
+
+
 def _tokens(value: Any) -> set[str]:
     if isinstance(value, dict):
         value = " ".join(str(item) for item in value.values())
