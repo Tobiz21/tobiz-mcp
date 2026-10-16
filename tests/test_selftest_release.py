@@ -116,6 +116,7 @@ class FakeService:
             "resumable_multipage_site_package",
             "transactional_multipage_site_build",
             "one_call_site_workflow_start",
+            "slug_accurate_public_page_verification",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

@@ -757,12 +757,37 @@ class Service:
     async def inspect_page(self, project_id: str, page_id: str, *, screenshot: bool = True,
                            viewports: list[str] | None = None,
                            forbidden_terms: list[str] | None = None) -> dict[str, Any]:
-        await self.resolve_page(project_id, page_id)
+        public_url = await self.public_page_url(project_id, page_id)
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
         output = Path(self.config.audit_dir) / "screenshots" / str(project_id) / str(page_id) / stamp
-        return await self.bridge.inspect_page(self.config.public_url(project_id, page_id), output,
+        return await self.bridge.inspect_page(public_url, output,
                                               viewports=viewports, screenshot=screenshot,
                                               forbidden_terms=forbidden_terms)
+
+    async def public_page_url(self, project_id: str, page_id: str) -> str:
+        """Resolve the actual public route; `?v=` is an editor selector, not a public route."""
+        project, pages = await self.pages(project_id, refresh=True)
+        page = next((item for item in pages if item.page_id == str(page_id)), None)
+        if page is None:
+            raise errors.TobizError(errors.NOT_FOUND, f"Страница {page_id} не найдена")
+        form = await self.page_form(project.project_id, page.page_id)
+        slug = str(form.text.get("page_dir") or page.slug or "").strip().strip("/")
+        base = str(project.site_url or self.config.lp_base(project.project_id)).strip()
+        if not base.startswith(("http://", "https://")):
+            base = "https://" + base.lstrip("/")
+        from urllib.parse import urlsplit, urlunsplit
+        parsed = urlsplit(base)
+        root = urlunsplit((parsed.scheme or "https", parsed.netloc, "/", "", ""))
+        if slug:
+            return root.rstrip("/") + "/" + slug + "/"
+        visible = [item for item in pages if item.visible]
+        if visible and visible[0].page_id == page.page_id:
+            return root
+        raise errors.TobizError(
+            errors.BAD_ARGUMENT,
+            f"У страницы {page_id} нет уникального публичного URL",
+            "Задайте page_dir или проверяйте первую видимую страницу проекта",
+        )
 
     async def audit_catalog(self, project_id: str,
                             type_ids: list[str] | None = None) -> dict[str, Any]:
@@ -1432,7 +1457,8 @@ class Service:
                           expect: list[str] | None = None,
                           block_ids: list[str] | None = None) -> dict[str, Any]:
         try:
-            html = await self.client.fetch_text(self.config.public_url(project_id, page_id))
+            public_url = await self.public_page_url(project_id, page_id)
+            html = await self.client.fetch_text(public_url)
         except errors.TobizError as exc:
             return {"status": "unavailable", "reason": exc.message}
         found: list[str] = []
@@ -1445,7 +1471,8 @@ class Service:
         status = "ok"
         if missing or not all(blocks_report.values()):
             status = "mismatch"
-        return {"status": status, "bytes": len(html), "found": found, "missing": missing,
+        return {"status": status, "url": public_url, "bytes": len(html),
+                "found": found, "missing": missing,
                 "blocks": blocks_report or None}
 
     # --- журнал ---
@@ -1740,6 +1767,7 @@ class Service:
                 "resumable_multipage_site_package",
                 "transactional_multipage_site_build",
                 "one_call_site_workflow_start",
+                "slug_accurate_public_page_verification",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

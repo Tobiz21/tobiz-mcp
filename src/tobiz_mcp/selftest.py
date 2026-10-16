@@ -78,12 +78,17 @@ async def cmd_render_check(service: Service, project_id: str | None, page_id: st
         "rendered": len(result.get("html", {})),
         "failed": result.get("failed", []),
     }
-    html = await service.client.fetch_text(service.config.public_url(project_id, page_id))
+    public_url = await service.public_page_url(project_id, page_id)
+    html = await service.client.fetch_text(public_url)
+    report["public_url"] = public_url
     report["public_bytes"] = len(html)
     report["blocks_in_public"] = {
         block_id: f'id="b_{block_id}"' in html for block_id in draft.order}
+    report["missing_public_blocks"] = [
+        block_id for block_id, present in report["blocks_in_public"].items() if not present
+    ]
     _print(report)
-    return 0 if not report["failed"] else 1
+    return 0 if not report["failed"] and not report["missing_public_blocks"] else 1
 
 
 async def cmd_page(service: Service, project_id: str | None, page_id: str) -> int:
@@ -191,6 +196,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "resumable_multipage_site_package",
         "transactional_multipage_site_build",
         "one_call_site_workflow_start",
+        "slug_accurate_public_page_verification",
     }
     missing_features = sorted(required_features - set(health.get("features", [])))
     report = {
