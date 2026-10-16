@@ -123,7 +123,7 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_inspect_flex_block', 'tobiz_audit_flex_page', 'tobiz_update_flex_block',
             'tobiz_copy_native_block', 'tobiz_validate_design_library',
             'tobiz_record_design_feedback', 'tobiz_list_design_feedback',
-            'tobiz_design_lessons'} <= set(names)
+            'tobiz_design_lessons', 'tobiz_refresh_design_passport'} <= set(names)
 
 
 def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():
@@ -153,6 +153,41 @@ def test_design_feedback_local_roundtrip(tmp_path):
     assert result["count"] == 1
     assert result["average_score"] == 4
     assert result["records"][0]["feedback_id"] == first["feedback_id"]
+
+
+def test_local_design_passport_override_roundtrip(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    stored = service.save_design_passport_override(
+        "sample", {"actual": {"blocks": 17, "flex_share": .118}})
+    assert stored["blocks"] == 17
+    loaded = service.design_passport_overrides()
+    assert loaded["sample"]["flex_share"] == .118
+    assert loaded["sample"]["verified_at"]
+
+
+def test_template_override_cannot_replace_source_identity(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path, read_only=False)
+    service._tool_metrics = {}
+    (tmp_path / "design-passports.json").write_text(
+        '{"modular-homes":{"project_id":"attacker","page_id":"evil","blocks":14,'
+        '"flex_share":0.0}}', encoding="utf-8")
+    functions = {}
+
+    class MCP:
+        def tool(self, name, description):
+            def decorator(fn):
+                functions[name] = fn
+                return fn
+            return decorator
+
+    register(MCP(), service)
+    result = __import__("asyncio").run(functions["tobiz_design_library"]())
+    item = next(value for value in result["data"]["installed"]
+                if value["id"] == "modular-homes")
+    assert item["project_id"] == "433135"
+    assert item["page_id"] == "1221163"
 
 
 def test_design_feedback_reorders_templates_with_bounded_evidence():
@@ -212,6 +247,9 @@ async def test_design_library_validator_reports_drift(monkeypatch):
 
     class FakeService:
         config = SimpleNamespace(read_only=False)
+
+        def design_passport_overrides(self):
+            return {}
 
         async def resolve_page(self, project_id, page_id):
             return project_id, SimpleNamespace()

@@ -1582,6 +1582,32 @@ class Service:
         return {"records": list(reversed(selected)), "count": len(selected),
                 "total_matching": len(records), "average_score": average}
 
+    def design_passport_overrides(self) -> dict[str, dict[str, Any]]:
+        path = self.config.audit_dir / "design-passports.json"
+        if not path.exists():
+            return {}
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return body if isinstance(body, dict) else {}
+
+    def save_design_passport_override(self, template_id: str,
+                                      passport: dict[str, Any]) -> dict[str, Any]:
+        overrides = self.design_passport_overrides()
+        record = {
+            "blocks": int(passport["actual"]["blocks"]),
+            "flex_share": float(passport["actual"]["flex_share"]),
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        }
+        overrides[str(template_id)] = record
+        self.config.audit_dir.mkdir(parents=True, exist_ok=True)
+        target = self.config.audit_dir / "design-passports.json"
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(target)
+        return record
+
     async def health(self) -> dict[str, Any]:
         from . import __version__
 
@@ -1643,6 +1669,7 @@ class Service:
                 "feedback_informed_template_selection",
                 "design_feedback_regression_gate",
                 "enforced_design_passport_freshness",
+                "local_design_passport_refresh",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

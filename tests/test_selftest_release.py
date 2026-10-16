@@ -69,6 +69,7 @@ class FakeService:
             "feedback_informed_template_selection",
             "design_feedback_regression_gate",
             "enforced_design_passport_freshness",
+            "local_design_passport_refresh",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

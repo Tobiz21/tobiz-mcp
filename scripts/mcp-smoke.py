@@ -52,6 +52,7 @@ REQUIRED_TOOLS = {
     "tobiz_record_design_feedback",
     "tobiz_list_design_feedback",
     "tobiz_design_lessons",
+    "tobiz_refresh_design_passport",
 }
 
 

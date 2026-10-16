@@ -148,10 +148,21 @@ def register(mcp: Any, service: Service) -> list[str]:
 
     def design_lessons() -> dict[str, Any]:
         stored = service.list_design_feedback(limit=500)
-        return design_feedback_domain.summarize(stored["records"], design_domain.INSTALLED)
+        return design_feedback_domain.summarize(stored["records"], effective_templates())
+
+    def effective_templates() -> list[dict[str, Any]]:
+        overrides = service.design_passport_overrides()
+        templates = []
+        for item in design_domain.INSTALLED:
+            override = overrides.get(str(item["id"]), {})
+            safe_override = {key: override[key] for key in ("blocks", "flex_share", "verified_at")
+                             if key in override}
+            templates.append({**dict(item), **safe_override})
+        return templates
 
     def select_with_feedback(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
-        base = design_domain.select(brief, top_k=len(design_domain.INSTALLED))
+        templates = effective_templates()
+        base = design_domain.select(brief, top_k=len(templates), installed=templates)
         return design_feedback_domain.apply_to_selection(base, design_lessons(), top_k)
 
     def select_native_with_feedback(brief: dict[str, Any], max_flex_share: float = .3
@@ -211,14 +222,16 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Machine-readable library of installed native TOBIZ template passports and visual references. "
           "Returns source project/page IDs, structure density, Flex share, strengths and image dependency.")
     async def tobiz_design_library() -> dict[str, Any]:
-        return design_domain.library()
+        result = design_domain.library(effective_templates())
+        result["local_passport_overrides"] = service.design_passport_overrides()
+        return result
 
     @tool("tobiz_validate_design_library",
           "Read-only validation of every installed design passport. Re-reads its TOBIZ page and reports "
           "missing sources, block-count drift and current Flex share. Never changes any project.")
     async def tobiz_validate_design_library() -> dict[str, Any]:
         results = []
-        for expected in design_domain.INSTALLED:
+        for expected in effective_templates():
             item = {"id": expected["id"], "project_id": expected["project_id"],
                     "page_id": expected["page_id"], "expected_blocks": expected["blocks"],
                     "expected_flex_share": expected["flex_share"]}
@@ -236,6 +249,27 @@ def register(mcp: Any, service: Service) -> list[str]:
         return {"valid": all(item["available"] and not item["drift"] for item in results),
                 "templates": results, "checked": len(results),
                 "drifted": sum(bool(item["drift"]) for item in results)}
+
+    @tool("tobiz_refresh_design_passport",
+          "Re-read one installed template and preview refreshed block-count/Flex facts. apply=true stores "
+          "a local override after explicit review; it never edits the source TOBIZ page.")
+    async def tobiz_refresh_design_passport(template_id: str,
+                                            apply: bool = False) -> dict[str, Any]:
+        expected = next((item for item in effective_templates()
+                         if item["id"] == str(template_id)), None)
+        if expected is None:
+            raise errors.TobizError(errors.NOT_FOUND, f"Шаблон {template_id} не найден")
+        project_id, _ = await service.resolve_page(expected["project_id"], expected["page_id"])
+        draft = await service.draft(project_id, expected["page_id"])
+        passport = design_domain.validate_passport(expected, draft)
+        result = {"preview": not apply, "template_id": template_id,
+                  "previous": passport["expected"], "refreshed": passport["actual"],
+                  "mismatches": passport["mismatches"]}
+        if apply:
+            result["stored"] = service.save_design_passport_override(template_id, passport)
+        else:
+            result["next_action"] = "Inspect the source template, then repeat with apply=true."
+        return result
 
     @tool("tobiz_list_design_feedback",
           "List locally stored human design evaluations. Read-only and contains no copied page content.")

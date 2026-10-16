@@ -119,9 +119,9 @@ def concepts(brief: dict[str, Any]) -> set[str]:
     return found
 
 
-def library() -> dict[str, Any]:
+def library(installed: list[dict[str, Any]] | tuple | None = None) -> dict[str, Any]:
     return {
-        "installed": [dict(item) for item in INSTALLED],
+        "installed": [dict(item) for item in (installed or INSTALLED)],
         "references": [{"id": item[0], "url": item[1], "visual_system": item[2],
                         "concepts": item[3]} for item in REFERENCES],
         "rules": {"max_flex_share": 0.3, "one_primary_visual_system": True,
@@ -183,12 +183,14 @@ def _rank(item: dict[str, Any], brief: dict[str, Any], brief_concepts: set[str])
     return {**item, "score": score, "reasons": reasons, "risks": risks}
 
 
-def select(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
+def select(brief: dict[str, Any], top_k: int = 3,
+           installed: list[dict[str, Any]] | tuple | None = None) -> dict[str, Any]:
     if not isinstance(brief, dict) or not any(str(value).strip() for value in brief.values()):
         raise ValueError("brief must contain at least one non-empty field")
-    top_k = max(1, min(int(top_k), 9))
+    candidates = installed or INSTALLED
+    top_k = max(1, min(int(top_k), len(candidates)))
     brief_concepts = concepts(brief)
-    ranked = sorted((_rank(dict(item), brief, brief_concepts) for item in INSTALLED),
+    ranked = sorted((_rank(dict(item), brief, brief_concepts) for item in candidates),
                     key=lambda item: (-item["score"], item["flex_share"], -item["blocks"], item["id"]))
     reference_ranked = []
     for ref_id, url, system, ref_concepts in REFERENCES:
@@ -203,9 +205,12 @@ def select(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
             "rule": "Copy the installed structure; replace content and media; keep native blocks."}
 
 
-def select_native(brief: dict[str, Any], max_flex_share: float = 0.3) -> tuple[dict[str, Any], dict[str, Any]]:
+def select_native(brief: dict[str, Any], max_flex_share: float = 0.3,
+                  installed: list[dict[str, Any]] | tuple | None = None
+                  ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the full ranking and its best native-first candidate."""
-    selection = select(brief, top_k=len(INSTALLED))
+    candidates = installed or INSTALLED
+    selection = select(brief, top_k=len(candidates), installed=candidates)
     ranked = [selection["recommended"], *selection["alternatives"]]
     eligible = [item for item in ranked
                 if float(item.get("flex_share") or 0) <= max_flex_share]
