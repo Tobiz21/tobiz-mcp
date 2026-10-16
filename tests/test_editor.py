@@ -49,7 +49,7 @@ def test_unsafe_structure_blocks_editor_save():
             "payload_order_mismatch"} <= codes
 
 
-def test_flex_and_incomplete_form_require_review():
+def test_flex_warning_does_not_mask_incomplete_form_blocker():
     blocks = [DraftBlock(str(index), "1600", {}) for index in range(1, 3)]
     blocks.append(DraftBlock("3", "120", {"form1": [{"type": "text"}]}))
     draft = make_draft(blocks)
@@ -60,9 +60,10 @@ def test_flex_and_incomplete_form_require_review():
     rendered = {block_id: "<section>Полностью отрендерированный штатный блок TOBIZ</section>"
                 for block_id in draft.order}
     result = editor.report(draft, types, rendered, payload_for(draft, rendered))
-    codes = {item["code"] for item in result["warnings"]}
-    assert result["verdict"] == "review"
-    assert {"high_flex_share", "form_without_button"} <= codes
+    assert result["verdict"] == "save_blocked"
+    assert result["editor_safe"] is False
+    assert "form_without_button" in {item["code"] for item in result["critical"]}
+    assert "high_flex_share" in {item["code"] for item in result["warnings"]}
 
 
 def test_invalid_flex_mobile_layout_blocks_editor_roundtrip():
@@ -88,10 +89,11 @@ def test_nested_flex_form_without_button_requires_editor_review():
     types = {"1600": SimpleNamespace(has_template=True)}
     rendered = {"10": "<section>Полностью отрендерированный штатный Flex TOBIZ</section>"}
     result = editor.report(draft, types, rendered, payload_for(draft, rendered))
-    warning = next(item for item in result["warnings"]
-                   if item["code"] == "form_without_button")
-    assert result["verdict"] == "review"
-    assert warning["form_path"] == "/flexblocks/0/content/form1"
+    issue = next(item for item in result["critical"]
+                 if item["code"] == "form_without_button")
+    assert result["verdict"] == "save_blocked"
+    assert result["editor_safe"] is False
+    assert issue["form_path"] == "/flexblocks/0/content/form1"
 
 
 def test_nested_submit_control_is_accepted_by_editor_roundtrip():

@@ -62,8 +62,9 @@ def report(draft: Draft, block_types: dict[str, Any], rendered: dict[str, str],
                              and item.get("type") in {"btn", "button", "submit"}
                              for item in form)
             if has_field and not has_button:
-                warnings.append({"code": "form_without_button", "block_id": block_id,
-                                 "form_path": form_path})
+                critical.append({"code": "form_without_button", "block_id": block_id,
+                                 "form_path": form_path,
+                                 "message": "Штатная форма не содержит кнопку отправки"})
 
     for anchor, block_ids in anchors.items():
         if len(block_ids) > 1:

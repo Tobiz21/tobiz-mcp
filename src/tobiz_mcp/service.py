@@ -1724,6 +1724,7 @@ class Service:
                 "brief_aligned_required_form_fields",
                 "nested_native_form_discovery",
                 "nested_form_editor_roundtrip",
+                "broken_form_editor_blocker",
                 "one_call_site_workflow_start",
             ],
             "transport": self.config.transport,
