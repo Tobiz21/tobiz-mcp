@@ -1548,6 +1548,40 @@ class Service:
         except OSError as exc:  # журнал не должен ломать операцию
             logger.warning("журнал недоступен: %s", exc)
 
+    def record_design_feedback(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Persist explicit human design feedback locally, without page content."""
+        body = dict(record)
+        body["created_at"] = datetime.now(timezone.utc).isoformat()
+        digest = hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        body["feedback_id"] = digest[:16]
+        self.config.audit_dir.mkdir(parents=True, exist_ok=True)
+        path = self.config.audit_dir / "design-feedback.jsonl"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(body, ensure_ascii=False) + "\n")
+        return body
+
+    def list_design_feedback(self, project_id: str | None = None,
+                             page_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+        path = self.config.audit_dir / "design-feedback.jsonl"
+        records: list[dict[str, Any]] = []
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if project_id and str(item.get("project_id")) != str(project_id):
+                    continue
+                if page_id and str(item.get("page_id")) != str(page_id):
+                    continue
+                records.append(item)
+        bounded = max(1, min(int(limit), 500))
+        selected = records[-bounded:]
+        average = (round(sum(float(item["score_overall"]) for item in selected) / len(selected), 2)
+                   if selected else None)
+        return {"records": list(reversed(selected)), "count": len(selected),
+                "total_matching": len(records), "average_score": average}
+
     async def health(self) -> dict[str, Any]:
         from . import __version__
 
@@ -1604,6 +1638,8 @@ class Service:
                 "post_build_plan_conformance",
                 "safe_native_block_reuse",
                 "native_flex_inspection_and_editing",
+                "design_library_drift_detection",
+                "structured_design_feedback",
             ],
             "transport": self.config.transport,
             "read_only": self.config.read_only,

@@ -48,6 +48,9 @@ REQUIRED_TOOLS = {
     "tobiz_audit_flex_page",
     "tobiz_update_flex_block",
     "tobiz_copy_native_block",
+    "tobiz_validate_design_library",
+    "tobiz_record_design_feedback",
+    "tobiz_list_design_feedback",
 }
 
 

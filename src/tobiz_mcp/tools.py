@@ -24,6 +24,7 @@ from .domain import site_plan as site_plan_domain
 from .domain import template as template_domain
 from .domain import audit as audit_domain
 from .domain import design as design_domain
+from .domain import design_feedback as design_feedback_domain
 from .domain import design_reference as design_reference_domain
 from .domain import layout as layout_domain
 from .domain import refinement as refinement_domain
@@ -60,6 +61,7 @@ READ_TOOLS = {
     "tobiz_get_product_offer",
     "tobiz_list_page_backups",
     "tobiz_design_library", "tobiz_select_design",
+    "tobiz_validate_design_library", "tobiz_list_design_feedback",
     "tobiz_editor_roundtrip_check",
     "tobiz_improve_page",
     "tobiz_layout_registry", "tobiz_repair_layout",
@@ -182,6 +184,61 @@ def register(mcp: Any, service: Service) -> list[str]:
           "Returns source project/page IDs, structure density, Flex share, strengths and image dependency.")
     async def tobiz_design_library() -> dict[str, Any]:
         return design_domain.library()
+
+    @tool("tobiz_validate_design_library",
+          "Read-only validation of every installed design passport. Re-reads its TOBIZ page and reports "
+          "missing sources, block-count drift and current Flex share. Never changes any project.")
+    async def tobiz_validate_design_library() -> dict[str, Any]:
+        results = []
+        for expected in design_domain.INSTALLED:
+            item = {"id": expected["id"], "project_id": expected["project_id"],
+                    "page_id": expected["page_id"], "expected_blocks": expected["blocks"],
+                    "expected_flex_share": expected["flex_share"]}
+            try:
+                project_id, _ = await service.resolve_page(expected["project_id"], expected["page_id"])
+                draft = await service.draft(project_id, expected["page_id"])
+                visible = [block for block in draft.blocks.values() if not block.deleted]
+                flex_count = sum(block.type_id == "1600" for block in visible)
+                item.update({"available": True, "actual_blocks": len(visible),
+                             "actual_flex_share": round(flex_count / max(len(visible), 1), 3)})
+                item["drift"] = (item["actual_blocks"] != item["expected_blocks"] or
+                                 item["actual_flex_share"] != item["expected_flex_share"])
+            except Exception as exc:  # one unavailable reference must not hide the rest
+                item.update({"available": False, "drift": True, "error": str(exc)})
+            results.append(item)
+        return {"valid": all(item["available"] and not item["drift"] for item in results),
+                "templates": results, "checked": len(results),
+                "drifted": sum(bool(item["drift"]) for item in results)}
+
+    @tool("tobiz_list_design_feedback",
+          "List locally stored human design evaluations. Read-only and contains no copied page content.")
+    async def tobiz_list_design_feedback(project_id: Id | None = None,
+                                         page_id: Id | None = None,
+                                         limit: int = 100) -> dict[str, Any]:
+        return service.list_design_feedback(project_id, page_id, limit)
+
+    @tool("tobiz_record_design_feedback",
+          "Record explicit human feedback about a page for future design decisions. Preview by default; "
+          "apply=true writes a local privacy-safe JSONL record, never changes the TOBIZ site.")
+    async def tobiz_record_design_feedback(project_id: Id, page_id: Id,
+                                           score_overall: float,
+                                           dimensions: dict[str, Any] | None = None,
+                                           issues: list[str] | None = None,
+                                           corrections: list[str] | None = None,
+                                           notes: str = "", template_id: str = "",
+                                           apply: bool = False) -> dict[str, Any]:
+        try:
+            record = design_feedback_domain.normalize(
+                project_id=project_id, page_id=page_id, score_overall=score_overall,
+                dimensions=dimensions, issues=issues, corrections=corrections,
+                notes=notes, template_id=template_id)
+        except (TypeError, ValueError) as exc:
+            raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
+        if not apply:
+            return {"preview": True, "record": record,
+                    "next_action": "Repeat with apply=true to store this local learning evidence."}
+        return {"preview": False, "stored": True,
+                "record": service.record_design_feedback(record)}
 
     @tool("tobiz_select_design",
           "Rank installed native templates for a website brief. brief may include industry, offer, audience, "

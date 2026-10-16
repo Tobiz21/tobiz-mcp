@@ -1,7 +1,9 @@
 import pytest
 from types import SimpleNamespace
 
-from tobiz_mcp.domain import design
+from tobiz_mcp.domain import design, design_feedback
+from tobiz_mcp.domain.draft import Draft, DraftBlock
+from tobiz_mcp.service import Service
 from tobiz_mcp.tools import register
 
 
@@ -103,4 +105,71 @@ def test_design_tools_are_registered_as_read_only_operations():
             'tobiz_audit_claims',
             'tobiz_check_site_plan',
             'tobiz_inspect_flex_block', 'tobiz_audit_flex_page', 'tobiz_update_flex_block',
-            'tobiz_copy_native_block'} <= set(names)
+            'tobiz_copy_native_block', 'tobiz_validate_design_library',
+            'tobiz_record_design_feedback', 'tobiz_list_design_feedback'} <= set(names)
+
+
+def test_design_feedback_normalizes_scores_and_rejects_unknown_dimensions():
+    record = design_feedback.normalize(
+        project_id="1", page_id="2", score_overall=7.5,
+        dimensions={"layout": 8, "mobile": 6},
+        issues=["  Карточки разной высоты  ", ""],
+        corrections=["Выровнять штатной настройкой"],
+    )
+    assert record["issues"] == ["Карточки разной высоты"]
+    assert record["dimensions"] == {"layout": 8.0, "mobile": 6.0}
+    with pytest.raises(ValueError):
+        design_feedback.normalize(project_id="1", page_id="2", score_overall=11)
+    with pytest.raises(ValueError):
+        design_feedback.normalize(
+            project_id="1", page_id="2", score_overall=5, dimensions={"magic": 5})
+
+
+def test_design_feedback_local_roundtrip(tmp_path):
+    service = Service.__new__(Service)
+    service.config = SimpleNamespace(audit_dir=tmp_path)
+    first = service.record_design_feedback(design_feedback.normalize(
+        project_id="1", page_id="2", score_overall=4, issues=["Слабое доверие"]))
+    service.record_design_feedback(design_feedback.normalize(
+        project_id="1", page_id="3", score_overall=8))
+    result = service.list_design_feedback(project_id="1", page_id="2")
+    assert result["count"] == 1
+    assert result["average_score"] == 4
+    assert result["records"][0]["feedback_id"] == first["feedback_id"]
+
+
+@pytest.mark.asyncio
+async def test_design_library_validator_reports_drift(monkeypatch):
+    functions = {}
+
+    class MCP:
+        def tool(self, name, description):
+            def decorator(fn):
+                functions[name] = fn
+                return fn
+            return decorator
+
+    draft = Draft(project_id="x", page_id="y")
+    draft.blocks = {
+        "1": DraftBlock("1", "101", {}),
+        "2": DraftBlock("2", "1600", {}),
+    }
+
+    class FakeService:
+        config = SimpleNamespace(read_only=False)
+
+        async def resolve_page(self, project_id, page_id):
+            return project_id, SimpleNamespace()
+
+        async def draft(self, project_id, page_id):
+            return draft
+
+    monkeypatch.setattr(design, "INSTALLED", ({
+        "id": "sample", "project_id": "x", "page_id": "y",
+        "blocks": 2, "flex_share": 0.0,
+    },))
+    register(MCP(), FakeService())
+    response = await functions["tobiz_validate_design_library"]()
+    assert response["ok"] is True
+    assert response["data"]["valid"] is False
+    assert response["data"]["templates"][0]["actual_flex_share"] == .5

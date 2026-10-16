@@ -64,6 +64,8 @@ class FakeService:
             "post_build_plan_conformance",
             "safe_native_block_reuse",
             "native_flex_inspection_and_editing",
+            "design_library_drift_detection",
+            "structured_design_feedback",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")
