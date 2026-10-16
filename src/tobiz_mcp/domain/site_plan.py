@@ -365,6 +365,7 @@ def _requested_form_fields(brief: dict[str, Any]) -> list[str]:
 def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
     """Validate native lead forms against the requested conversion contract."""
     required = _requested_form_fields(brief)
+    required_contacts = [role for role in required if role in {"phone", "email"}]
     forms = []
     for position, block_id in enumerate(draft.order):
         block = draft.blocks[block_id]
@@ -388,6 +389,14 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
             })
             has_button = bool(submit_labels)
             has_labeled_button = any(submit_labels)
+            mandatory_fields = [
+                role for item, role in zip(controls, roles)
+                if role not in {"button", "unknown"}
+                and str(item.get("required") or "").strip().lower()
+                in {"1", "true", "yes", "on"}
+            ]
+            has_required_contact = (not required_contacts or
+                                    any(role in mandatory_fields for role in required_contacts))
             forms.append({
                 "block_index": position,
                 "block_id": str(block_id),
@@ -397,9 +406,12 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                 "has_button": has_button,
                 "has_labeled_button": has_labeled_button,
                 "duplicate_fields": duplicate_fields,
+                "mandatory_fields": mandatory_fields,
+                "has_required_contact": has_required_contact,
                 "name_before_phone": (name_index >= 0 and phone_index >= 0
                                       and name_index < phone_index),
                 "matches_contract": (not missing and has_labeled_button and not duplicate_fields
+                                     and has_required_contact
                                      and ("phone" not in required or name_index < phone_index)),
             })
     matching = [item for item in forms if item["matches_contract"]]
@@ -441,6 +453,18 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
                        "fields": item["duplicate_fields"]} for item in duplicate_forms],
             "action": "Оставить каждое смысловое поле в штатной форме один раз.",
         })
+    optional_contact_forms = [
+        item for item in forms
+        if not item["missing_required_fields"] and not item["has_required_contact"]
+    ]
+    if optional_contact_forms:
+        blockers.append({
+            "code": "contact_field_not_required",
+            "required_contacts": required_contacts,
+            "forms": [{"block_id": item["block_id"], "form_key": item["form_key"]}
+                      for item in optional_contact_forms],
+            "action": "Сделать телефон или email обязательным штатной настройкой поля формы.",
+        })
     return {
         "ready": not blockers,
         "required_fields": required,
@@ -448,7 +472,7 @@ def conversion_readiness(draft, brief: dict[str, Any]) -> dict[str, Any]:
         "matching_forms": len(matching),
         "blockers": blockers,
         "rule": ("Использовать штатную форму; поле «Имя» идет перед «Телефоном», "
-                 "поля не дублируются, кнопка отправки имеет видимую подпись."),
+                 "поля не дублируются, кнопка имеет видимую подпись, а контакт обязателен."),
     }
 
 

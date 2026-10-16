@@ -9,7 +9,8 @@ def draft():
     return Draft('1', '2', blocks={
         '10': DraftBlock('10', '1154', {'title': 'Курс математики', 'bg_image': 'hero.jpg'}),
         '11': DraftBlock('11', '306', {'title': 'Записаться', 'form1': [
-            {'type': 'name'}, {'type': 'phone'}, {'type': 'btn', 'title': 'Отправить'},
+            {'type': 'name'}, {'type': 'phone', 'required': 1},
+            {'type': 'btn', 'title': 'Отправить'},
         ]}),
     }, order=['10', '11'])
 
@@ -186,7 +187,7 @@ def test_conversion_readiness_accepts_requested_native_form_fields():
     source = Draft('1', '2', blocks={
         '1': DraftBlock('1', '306', {'form1': [
             {'type': 'text', 'title': 'Ваше имя'},
-            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
             {'type': 'date', 'title': 'Дата мероприятия'},
             {'type': 'number', 'title': 'Количество гостей'},
             {'type': 'btn', 'title': 'Узнать свободное время'},
@@ -202,7 +203,7 @@ def test_conversion_readiness_accepts_requested_native_form_fields():
 def test_conversion_readiness_rejects_missing_name_button_and_wrong_order():
     source = Draft('1', '2', blocks={
         '1': DraftBlock('1', '306', {'form1': [
-            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
             {'type': 'text', 'title': 'Ваше имя'},
         ]}),
     }, order=['1'])
@@ -218,7 +219,7 @@ def test_conversion_readiness_rejects_blank_submit_and_duplicate_fields():
         '1': DraftBlock('1', '306', {'form1': [
             {'type': 'text', 'title': 'Ваше имя'},
             {'type': 'phone', 'title': 'Телефон'},
-            {'type': 'phone', 'title': 'Ваш телефон'},
+            {'type': 'phone', 'title': 'Ваш телефон', 'required': 1},
             {'type': 'btn', 'title': ''},
         ]}),
     }, order=['1'])
@@ -235,7 +236,7 @@ def test_conversion_readiness_rejects_broken_secondary_native_form():
     source = Draft('1', '2', blocks={
         '1': DraftBlock('1', '306', {'form1': [
             {'type': 'text', 'title': 'Ваше имя'},
-            {'type': 'phone', 'title': 'Телефон'},
+            {'type': 'phone', 'title': 'Телефон', 'required': 1},
             {'type': 'btn', 'title': 'Оставить заявку'},
         ]}),
         '2': DraftBlock('2', '306', {'form1': [
@@ -246,6 +247,22 @@ def test_conversion_readiness_rejects_broken_secondary_native_form():
     assert result['matching_forms'] == 1
     assert result['ready'] is False
     assert 'form_submit_missing' in {item['code'] for item in result['blockers']}
+
+
+def test_conversion_readiness_requires_contactability():
+    source = Draft('1', '2', blocks={
+        '1': DraftBlock('1', '306', {'form1': [
+            {'type': 'text', 'title': 'Ваше имя', 'required': 1},
+            {'type': 'phone', 'title': 'Телефон', 'required': 0},
+            {'type': 'btn', 'title': 'Оставить заявку'},
+        ]}),
+    }, order=['1'])
+    result = site_plan.conversion_readiness(source, {})
+    assert result['ready'] is False
+    assert result['forms'][0]['mandatory_fields'] == ['name']
+    assert result['forms'][0]['has_required_contact'] is False
+    assert 'contact_field_not_required' in {
+        item['code'] for item in result['blockers']}
 
 
 def test_conversion_readiness_rejects_template_without_native_form():
