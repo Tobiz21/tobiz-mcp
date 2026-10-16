@@ -169,14 +169,42 @@ def register(mcp: Any, service: Service) -> list[str]:
         base = design_domain.select(brief, top_k=len(templates), installed=templates)
         return design_feedback_domain.apply_to_selection(base, design_lessons(), top_k)
 
-    def select_native_with_feedback(brief: dict[str, Any], max_flex_share: float = .3
-                                    ) -> tuple[dict[str, Any], dict[str, Any]]:
-        selection = select_with_feedback(brief, top_k=len(design_domain.INSTALLED))
+    async def select_available_with_feedback(
+            brief: dict[str, Any], top_k: int = 3,
+            max_flex_share: float | None = None
+            ) -> tuple[dict[str, Any], dict[str, Any], Any, dict[str, Any]]:
+        selection = select_with_feedback(brief, top_k=len(effective_templates()))
         ranked = [selection["recommended"], *selection["alternatives"]]
-        eligible = [item for item in ranked if float(item.get("flex_share") or 0) <= max_flex_share]
-        if not eligible:
-            raise ValueError(f"no verified template with Flex share <= {max_flex_share}")
-        return selection, eligible[0]
+        accepted = []
+        rejected = []
+        for candidate in ranked:
+            if (max_flex_share is not None
+                    and float(candidate.get("flex_share") or 0) > max_flex_share):
+                rejected.append({"id": candidate["id"], "code": "flex_limit_exceeded"})
+                continue
+            try:
+                project_id, _ = await service.resolve_page(
+                    candidate["project_id"], candidate["page_id"])
+                draft = await service.draft(project_id, candidate["page_id"])
+                passport = ensure_template_current(candidate, draft)
+            except Exception as exc:  # one bad source must not prevent a valid fallback
+                rejected.append({"id": candidate["id"], "code": "source_unavailable_or_stale",
+                                 "error": str(exc)})
+                continue
+            accepted.append((candidate, draft, passport))
+        if not accepted:
+            raise errors.TobizError(
+                errors.NOT_FOUND, "В текущем аккаунте нет доступного проверенного шаблона",
+                "Зарегистрируйте страницу через tobiz_register_design_template",
+                raw={"code": "no_available_design_template", "rejected": rejected})
+        selected, draft, passport = accepted[0]
+        available_items = [item[0] for item in accepted]
+        bounded = max(1, min(int(top_k), len(available_items)))
+        resolved = {**selection, "recommended": selected,
+                    "alternatives": available_items[1:bounded],
+                    "unavailable_sources": rejected,
+                    "availability_checked": True}
+        return resolved, selected, draft, passport
 
     def ensure_template_current(selected: dict[str, Any], draft: Any) -> dict[str, Any]:
         passport = design_domain.validate_passport(selected, draft)
@@ -378,7 +406,8 @@ def register(mcp: Any, service: Service) -> list[str]:
           "alternatives, risks and visual references; does not copy or change a site.")
     async def tobiz_select_design(brief: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         try:
-            return select_with_feedback(brief, top_k)
+            selection, _, _, _ = await select_available_with_feedback(brief, top_k=top_k)
+            return selection
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
 
@@ -1283,11 +1312,10 @@ def register(mcp: Any, service: Service) -> list[str]:
         if goal and goal not in composition_domain.GOALS:
             raise errors.TobizError(errors.BAD_ARGUMENT, f"Неизвестная цель композиции: {goal}")
         try:
-            selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
+            selection, selected, source_draft, template_passport = (
+                await select_available_with_feedback(brief, top_k=9, max_flex_share=0.3))
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
-        source_draft = await service.draft(selected["project_id"], selected["page_id"])
-        template_passport = ensure_template_current(selected, source_draft)
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         plan = site_plan_domain.build(
@@ -1668,11 +1696,12 @@ def register(mcp: Any, service: Service) -> list[str]:
             brief: dict[str, Any], plan_id: str, project_id: Id | None = None,
             page_id: Id = "", source_terms: list[str] | None = None,
             screenshots: bool = True) -> dict[str, Any]:
-        selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
-        source_draft = await service.draft(selected["project_id"], selected["page_id"])
+        selection, selected, source_draft, template_passport = (
+            await select_available_with_feedback(brief, top_k=9, max_flex_share=0.3))
         blueprint = content_domain.compact_blueprint(
             content_domain.passport(source_draft), content_domain.content_map(source_draft))
         plan = site_plan_domain.build(brief, selection, selected, blueprint, source_draft)
+        plan["template_passport"] = template_passport
         if plan_id != plan["plan_id"]:
             raise errors.TobizError(
                 errors.CONFLICT, "plan_id не соответствует текущему брифу и шаблону",
@@ -1736,7 +1765,8 @@ def register(mcp: Any, service: Service) -> list[str]:
         if not isinstance(brief, dict):
             raise errors.TobizError(errors.BAD_ARGUMENT, "brief must be an object")
         try:
-            selection, selected = select_native_with_feedback(brief, max_flex_share=0.3)
+            selection, selected, source_draft, template_passport = (
+                await select_available_with_feedback(brief, top_k=9, max_flex_share=0.3))
         except (TypeError, ValueError) as exc:
             raise errors.TobizError(errors.BAD_ARGUMENT, str(exc)) from exc
         if apply and not str(target_project_id or "").strip():
@@ -1752,8 +1782,6 @@ def register(mcp: Any, service: Service) -> list[str]:
                 raw={"code": "source_project_target_forbidden",
                      "source_project_id": selected["project_id"]},
             )
-        source_draft = await service.draft(selected["project_id"], selected["page_id"])
-        template_passport = ensure_template_current(selected, source_draft)
         source_passport = content_domain.passport(source_draft)
         blueprint = content_domain.compact_blueprint(
             source_passport, content_domain.content_map(source_draft))

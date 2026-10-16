@@ -72,6 +72,7 @@ class FakeService:
             "local_design_passport_refresh",
             "account_local_design_template_registry",
             "quality_gated_design_template_registration",
+            "available_template_fallback_selection",
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")

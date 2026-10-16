@@ -316,3 +316,55 @@ async def test_design_library_validator_reports_drift(monkeypatch):
     assert response["ok"] is True
     assert response["data"]["valid"] is False
     assert response["data"]["templates"][0]["actual_flex_share"] == .5
+
+
+@pytest.mark.asyncio
+async def test_design_selection_skips_unavailable_source(monkeypatch):
+    functions = {}
+
+    class MCP:
+        def tool(self, name, description):
+            def decorator(fn):
+                functions[name] = fn
+                return fn
+            return decorator
+
+    common = {
+        "title": "Услуги", "visual_system": "friendly_service",
+        "site_kind": "expert_service", "concepts": ["service"],
+        "strengths": ["contacts"], "photo_dependency": "medium",
+        "content_density": "medium", "blocks": 1, "flex_share": 0.0,
+    }
+    monkeypatch.setattr(design, "INSTALLED", (
+        {**common, "id": "a-bad", "project_id": "bad", "page_id": "1"},
+        {**common, "id": "z-good", "project_id": "good", "page_id": "2"},
+    ))
+    draft = Draft(project_id="good", page_id="2")
+    draft.blocks = {"1": DraftBlock("1", "101", {})}
+
+    class FakeService:
+        config = SimpleNamespace(read_only=False)
+
+        def design_passport_overrides(self):
+            return {}
+
+        def custom_design_templates(self):
+            return []
+
+        def list_design_feedback(self, **kwargs):
+            return {"records": []}
+
+        async def resolve_page(self, project_id, page_id):
+            if project_id == "bad":
+                raise RuntimeError("not available")
+            return project_id, SimpleNamespace()
+
+        async def draft(self, project_id, page_id):
+            return draft
+
+    register(MCP(), FakeService())
+    response = await functions["tobiz_select_design"]({"industry": "услуги"}, top_k=2)
+    assert response["ok"] is True
+    assert response["data"]["recommended"]["id"] == "z-good"
+    assert response["data"]["unavailable_sources"][0]["id"] == "a-bad"
+    assert response["data"]["availability_checked"] is True
