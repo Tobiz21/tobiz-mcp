@@ -550,6 +550,38 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
     allowed = set(required)
     mapped: dict[str, list[dict[str, Any]]] = {code: [] for code in required}
     unknown = []
+    weak = []
+    brief = plan.get("brief") if isinstance(plan.get("brief"), dict) else {}
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+    goal = str(readiness.get("goal") or plan.get("goal") or infer_goal(brief))
+    aliases_by_code = {
+        code: aliases for code, aliases, _label in EVIDENCE_REQUIREMENTS.get(goal, ())}
+
+    def tokens(value: Any) -> set[str]:
+        ignored = {"для", "или", "это", "как", "при", "под", "над", "без", "все", "что"}
+        return {
+            token for text in _fact_leaves(value)
+            for token in re.findall(r"[0-9A-Za-zА-Яа-яЁё]{3,}", text.lower().replace("ё", "е"))
+            if token not in ignored
+        }
+
+    evidence_tokens = {}
+    for code in required:
+        values = [brief.get(alias, facts.get(alias)) for alias in aliases_by_code.get(code, ())]
+        evidence_tokens[code] = tokens(values)
+
+    def grounded(code: str, value: str) -> bool:
+        expected = evidence_tokens.get(code, set())
+        actual = tokens(value)
+        if expected & actual:
+            return True
+        expected_stems = {token[:4] for token in expected if len(token) >= 5}
+        actual_stems = {token[:4] for token in actual if len(token) >= 5}
+        return bool(expected_stems & actual_stems)
+
+    if ("contact" in mapped
+            and (plan.get("conversion_readiness") or {}).get("ready") is True):
+        mapped["contact"].append({"source": "native_conversion_form"})
     for slot in recipe.get("slots") or []:
         if not isinstance(slot, dict):
             continue
@@ -570,9 +602,15 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
                     "code": normalized,
                 })
                 continue
-            if str(slot.get("value") or "").strip():
+            value = str(slot.get("value") or "").strip()
+            if value and grounded(normalized, value):
                 mapped[normalized].append({
                     "block_index": slot.get("block_index"), "path": slot.get("path")})
+            elif value and normalized != "contact":
+                weak.append({
+                    "block_index": slot.get("block_index"), "path": slot.get("path"),
+                    "evidence_code": normalized,
+                })
     missing = [code for code in required if not mapped[code]]
     issues = []
     if missing:
@@ -587,12 +625,19 @@ def validate_evidence_coverage(plan: dict[str, Any], recipe: dict[str, Any]) -> 
             "items": unknown,
             "action": "Использовать только коды из brief_readiness.confirmed_fields.",
         })
+    if weak:
+        issues.append({
+            "priority": "must_fix", "code": "evidence_mapping_not_grounded",
+            "items": weak,
+            "action": "Добавить в текст конкретный подтвержденный факт или убрать неверную связь.",
+        })
     return {
         "ready": not issues,
         "required": required,
         "covered": [code for code in required if mapped[code]],
         "missing": missing,
         "mappings": mapped,
+        "ungrounded_mappings": weak,
         "issues": issues,
     }
 

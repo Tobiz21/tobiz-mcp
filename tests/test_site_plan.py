@@ -272,10 +272,10 @@ def test_unified_preflight_accepts_complete_quality_package():
             'hero', 'programs', 'benefits', 'process', 'expert', 'proof', 'cta', 'contact'],
     }, 'education')
     recipe = {'types': ['1154', '306'], 'slots': [
-        {'block_index': 0, 'path': '/title', 'value': 'Курс за 6 400 руб.',
+        {'block_index': 0, 'path': '/title',
+         'value': 'Арифметика онлайн с Ириной: решать задачи самостоятельно',
          'evidence_codes': ['program', 'format', 'expert', 'result']},
-        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс',
-         'evidence_codes': ['contact']},
+        {'block_index': 1, 'path': '/title', 'value': 'Записаться на курс'},
     ]}
     media = {'groups': [{
         'block_index': 0, 'path_pattern': '/bg_image', 'assets': [{
@@ -299,13 +299,19 @@ def test_unified_preflight_accepts_complete_quality_package():
 
 
 def test_evidence_coverage_reports_confirmed_facts_omitted_from_copy():
-    plan = {'brief_readiness': {
-        'confirmed_fields': ['program', 'format', 'expert', 'result', 'contact']}}
+    plan = {
+        'goal': 'education',
+        'brief': {'facts': {
+            'program': 'Арифметика', 'format': 'Онлайн', 'teacher': 'Ирина',
+            'result': 'Самостоятельно решает задачи', 'phone': '+7 900 000-00-00'}},
+        'brief_readiness': {
+            'goal': 'education',
+            'confirmed_fields': ['program', 'format', 'expert', 'result', 'contact']},
+        'conversion_readiness': {'ready': True},
+    }
     recipe = {'slots': [
-        {'block_index': 0, 'path': '/title', 'value': 'Курс математики',
+        {'block_index': 0, 'path': '/title', 'value': 'Арифметика онлайн',
          'evidence_codes': ['program', 'format']},
-        {'block_index': 1, 'path': '/title', 'value': 'Записаться',
-         'evidence_codes': ['contact']},
     ]}
     result = site_plan.validate_evidence_coverage(plan, recipe)
     assert result['ready'] is False
@@ -315,12 +321,27 @@ def test_evidence_coverage_reports_confirmed_facts_omitted_from_copy():
 
 def test_evidence_coverage_rejects_unknown_mapping_code():
     result = site_plan.validate_evidence_coverage(
-        {'brief_readiness': {'confirmed_fields': ['offer']}},
+        {'goal': 'lead_generation', 'brief': {'offer': 'Услуга'},
+         'brief_readiness': {'goal': 'lead_generation', 'confirmed_fields': ['offer']}},
         {'slots': [{'block_index': 0, 'path': '/title', 'value': 'Услуга',
                     'evidence_codes': ['offer', 'invented_award']}]})
     assert result['ready'] is False
     assert result['covered'] == ['offer']
     assert result['issues'][0]['code'] == 'unknown_evidence_mapping'
+
+
+def test_evidence_coverage_rejects_label_without_fact_in_copy():
+    result = site_plan.validate_evidence_coverage({
+        'goal': 'education',
+        'brief': {'teacher': 'Ирина Мезенцева'},
+        'brief_readiness': {'goal': 'education', 'confirmed_fields': ['expert']},
+    }, {'slots': [{
+        'block_index': 2, 'path': '/text', 'value': 'Опытный преподаватель',
+        'evidence_codes': ['expert'],
+    }]})
+    assert result['ready'] is False
+    assert result['missing'] == ['expert']
+    assert result['issues'][-1]['code'] == 'evidence_mapping_not_grounded'
 
 
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
