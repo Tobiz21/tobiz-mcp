@@ -489,6 +489,7 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
     issues = []
     lengths: dict[tuple[int, str], list[int]] = {}
     copy_uses: dict[str, list[dict[str, Any]]] = {}
+    button_values: list[dict[str, Any]] = []
     draft_mode = brief.get("allow_placeholders") is True
     for slot in recipe.get("slots") or []:
         if not isinstance(slot, dict):
@@ -516,6 +517,8 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
             issues.append({"priority": "improve", "code": "generic_recipe_cta",
                            "block_index": key[0], "path": key[1],
                            "action": "Назвать конкретное действие пользователя в контексте секции."})
+        if role == "button" and value:
+            button_values.append({"block_index": key[0], "path": key[1], "value": value})
         if role in {"card_title", "body"}:
             lengths.setdefault((int(key[0]), role), []).append(len(value))
         if role not in {"button", "link"} and len(value) >= 12:
@@ -531,6 +534,33 @@ def validate_recipe(brief: dict[str, Any], plan: dict[str, Any], blueprint: dict
                 "priority": "improve" if draft_mode else "must_fix",
                 "code": "duplicate_recipe_copy", "text": value, "uses": uses,
                 "action": "Раскрыть назначение каждой секции своим текстом без копирования абзацев.",
+            })
+    facts = brief.get("facts") if isinstance(brief.get("facts"), dict) else {}
+    primary_cta = str(brief.get("primary_cta") or brief.get("cta")
+                      or brief.get("action") or facts.get("primary_cta")
+                      or facts.get("cta") or facts.get("action") or "").strip()
+    if primary_cta and button_values:
+        def cta_tokens(value: str) -> set[str]:
+            ignored = {"для", "или", "это", "как", "ваш", "ваша", "ваше", "сейчас"}
+            return {token for token in re.findall(
+                r"[0-9A-Za-zА-Яа-яЁё]{3,}", value.lower().replace("ё", "е"))
+                    if token not in ignored}
+
+        expected_tokens = cta_tokens(primary_cta)
+        expected_stems = {token[:4] for token in expected_tokens if len(token) >= 5}
+        matched = False
+        for item in button_values:
+            actual_tokens = cta_tokens(item["value"])
+            actual_stems = {token[:4] for token in actual_tokens if len(token) >= 5}
+            if expected_tokens & actual_tokens or expected_stems & actual_stems:
+                matched = True
+                break
+        if not matched:
+            issues.append({
+                "priority": "improve" if draft_mode else "must_fix",
+                "code": "primary_cta_not_used", "primary_cta": primary_cta,
+                "buttons": button_values,
+                "action": "Назвать хотя бы одну штатную кнопку согласованным целевым действием.",
             })
     for (block_index, role), values in lengths.items():
         threshold = 35 if role == "card_title" else 110

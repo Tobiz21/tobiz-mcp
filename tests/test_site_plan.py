@@ -525,6 +525,38 @@ def test_recipe_preflight_warns_about_unbalanced_cards_in_prototype():
     assert result['ready_for_build'] is True
 
 
+def test_recipe_preflight_requires_brief_primary_cta_in_native_button():
+    blueprint = {'recipe': {'types': ['306'], 'slots': [{
+        'block_index': 0, 'path': '/btn1/title', 'kind': 'text',
+        'role': 'button', 'current': 'Отправить',
+    }]}}
+    plan = {'plan_id': 'cta', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['306'], 'slots': [{
+        'block_index': 0, 'path': '/btn1/title', 'value': 'Подробнее',
+    }]}
+    result = site_plan.validate_recipe(
+        {'primary_cta': 'Узнать свободное время'}, plan, blueprint, recipe)
+    assert result['ready_for_build'] is False
+    assert 'primary_cta_not_used' in {item['code'] for item in result['blockers']}
+
+
+def test_recipe_preflight_accepts_inflected_primary_cta_wording():
+    blueprint = {'recipe': {'types': ['306'], 'slots': [{
+        'block_index': 0, 'path': '/btn1/title', 'kind': 'text',
+        'role': 'button', 'current': 'Отправить',
+    }]}}
+    plan = {'plan_id': 'cta', 'content_brief': {'ready_for_copywriting': True},
+            'brief_readiness': {'confirmed_fields': []}}
+    recipe = {'types': ['306'], 'slots': [{
+        'block_index': 0, 'path': '/btn1/title', 'value': 'Записаться на консультацию',
+    }]}
+    result = site_plan.validate_recipe(
+        {'primary_cta': 'Запись на консультацию'}, plan, blueprint, recipe)
+    assert result['ready_for_build'] is True
+    assert 'primary_cta_not_used' not in {item['code'] for item in result['issues']}
+
+
 def test_unified_preflight_blocks_incomplete_quality_brief_but_allows_prototype():
     source = draft()
     brief = {'industry': 'Онлайн-школа математики'}

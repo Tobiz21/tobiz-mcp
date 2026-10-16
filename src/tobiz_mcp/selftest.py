@@ -154,6 +154,7 @@ async def cmd_release(service: Service, project_id: str | None, page_id: str) ->
         "goal_specific_architecture_gate",
         "native_conversion_contract_gate",
         "native_anchor_recipe_validation",
+        "brief_aligned_primary_cta_gate",
         "semantic_media_assignment_gate",
         "within_group_media_deduplication",
         "content_hash_media_deduplication",
