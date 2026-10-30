@@ -17,7 +17,7 @@ from .. import errors, log
 from ..config import Config
 from ..session import SessionStore
 from . import endpoints as ep
-from .envelope import ACCESS_DENIED, Envelope, parse
+from .envelope import ACCESS_DENIED, Envelope, decode_json_response, parse
 
 logger = log.get("tobiz.client")
 
@@ -121,10 +121,13 @@ class TobizClient:
             origin=self.config.base_url,
         )
         try:
-            payload = json.loads(response.content.decode("utf-8"))
+            payload = decode_json_response(response.content.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise errors.TobizError(errors.UPSTREAM_UNAVAILABLE,
                                     "Редактор TOBIZ вернул неразбираемый ответ", raw=str(exc))
+        if not isinstance(payload, dict):
+            raise errors.TobizError(errors.UPSTREAM_UNAVAILABLE,
+                                    "Редактор TOBIZ вернул ответ неверного формата")
         if str(payload.get("status", "")).upper() != "OK":
             raise errors.TobizError(errors.SAVE_FAILED,
                                     str(payload.get("description") or "TOBIZ отклонил действие"),
@@ -146,11 +149,14 @@ class TobizClient:
             origin=self.config.base_url,
         )
         try:
-            payload = json.loads(response.content.decode("utf-8"))
+            payload = decode_json_response(response.content.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise errors.TobizError(errors.UPLOAD_REJECTED,
                                     "Редактор TOBIZ вернул неразбираемый ответ загрузки",
                                     raw=str(exc))
+        if not isinstance(payload, dict):
+            raise errors.TobizError(errors.UPLOAD_REJECTED,
+                                    "Редактор TOBIZ вернул ответ загрузки неверного формата")
         if str(payload.get("status", "")).upper() != "OK":
             raise errors.TobizError(errors.UPLOAD_REJECTED,
                                     str(payload.get("description") or "Изображение не загружено"),

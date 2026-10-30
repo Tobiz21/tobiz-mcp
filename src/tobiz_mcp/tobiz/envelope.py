@@ -12,10 +12,42 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
 ACCESS_DENIED = "access denied"
+_PHP_DIAGNOSTIC = re.compile(
+    r"(?:php\s+)?(?:warning|notice|deprecated|strict standards|fatal error)",
+    re.IGNORECASE,
+)
+
+
+def decode_json_response(text: str) -> Any:
+    """Decode a TOBIZ JSON response, tolerating a PHP diagnostic prefix.
+
+    PHP 8.2 may expose a warning or deprecation before an otherwise valid JSON
+    document. We only recover when the prefix is recognisably a PHP diagnostic;
+    arbitrary HTML and damaged JSON remain errors.
+    """
+    cleaned = (text or "").lstrip("\ufeff\x00\r\n\t ")
+    try:
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, TypeError) as original:
+        lowered = cleaned.lower()
+        if ("<html" in lowered or "<!doctype" in lowered
+                or "<script" in lowered or not _PHP_DIAGNOSTIC.search(cleaned)):
+            raise original
+        starts = [position for position in (cleaned.find("{"), cleaned.find("["))
+                  if position >= 0]
+        if not starts:
+            raise original
+        start = min(starts)
+        prefix = cleaned[:start]
+        if not _PHP_DIAGNOSTIC.search(prefix):
+            raise original
+        candidate = cleaned[start:].strip()
+        return json.loads(candidate)
 
 
 @dataclass
@@ -45,7 +77,7 @@ def parse(text: str) -> Envelope:
     """Разбирает ответ конструктора. Никогда не бросает исключение."""
     text = text or ""
     try:
-        data = json.loads(text)
+        data = decode_json_response(text)
     except (json.JSONDecodeError, TypeError):
         lowered = text.lower()
         if "access denied" in lowered:

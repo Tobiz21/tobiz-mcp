@@ -27,7 +27,11 @@
   проходит dry-run preflight, затем создается атомарно вместе с категориями, изображениями и
   вариантами; неполная сущность удаляется при ошибке или провале итогового аудита.
 
-## Unreleased
+## 0.9.0b4
+
+- PHP 8.2 compatibility: tolerate UTF-8 BOM and PHP warning/notice/deprecation prefixes before
+  valid JSON responses from the editor and article/product modules, while still rejecting arbitrary
+  HTML and malformed payloads.
 
 - Добавлены read-only аудиты готовности статей и товаров к публикации: содержательность,
   структура, SEO, изображения, категории, цены, видео и уникальность вариантов.

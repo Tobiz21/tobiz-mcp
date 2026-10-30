@@ -121,7 +121,7 @@ class FakeService:
         ]
         if self.missing_feature:
             features.remove("safe_page_backups")
-        return {"version": "0.9.0b3", "features": features}
+        return {"version": "0.9.0b4", "features": features}
 
 
 def test_release_passes_complete_strict_install(capsys) -> None:
